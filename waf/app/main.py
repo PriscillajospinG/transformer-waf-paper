@@ -88,8 +88,8 @@ stats = {
 API_TOKEN = os.getenv("API_TOKEN", "secure-api-token-change-me")
 MAX_URI_LEN = 4096
 MAX_TEST_URL_LEN = 2048
-AI_CONFIDENCE_THRESHOLD = float(os.getenv("AI_CONFIDENCE_THRESHOLD", "0.95"))
-UNCERTAINTY_THRESHOLD = float(os.getenv("UNCERTAINTY_THRESHOLD", "0.85"))
+AI_CONFIDENCE_THRESHOLD = float(os.getenv("AI_CONFIDENCE_THRESHOLD", "0.98"))  # Increased: more conservative (fewer blocks)
+UNCERTAINTY_THRESHOLD = float(os.getenv("UNCERTAINTY_THRESHOLD", "0.90"))  # Increased: higher bar for uncertainty
 MAX_ALLOWED_SPECIAL_CHARS = int(os.getenv("MAX_ALLOWED_SPECIAL_CHARS", "10"))
 
 SUSPICIOUS_KEYWORDS = [
@@ -132,19 +132,28 @@ EXCLUDED_QUERY_MARKERS = (
 )
 
 # ===== SAFE INTERNAL ENDPOINTS =====
-# These endpoints are part of normal app functionality (not user input)
-# We still check for attacks, but we're lenient with thresholds
-SAFE_INTERNAL_PREFIXES = (
-    "/rest/",           # REST API endpoints (dropdowns, data fetching)
+# These endpoints are part of normal app functionality and should ALWAYS be allowed
+# unless they contain obvious attack signatures (Tier 1 attacks).
+# Format: app endpoints that are internally managed, not directly from user input.
+SAFE_ENDPOINTS = [
     "/socket.io/",      # WebSocket/real-time communication
-    "/assets/",         # Static files
+    "/rest/",           # REST API endpoints (dropdowns, data fetching)
+    "/api/",            # Application API
+    "/assets/",         # Static assets
     "/static/",         # Alternative static path
     "/css/",            # Stylesheets
     "/js/",             # JavaScript files
     "/images/",         # Images
-    "/fonts/",          # Fonts
+    "/fonts/",          # Font files
+    "/i18n/",           # Internationalization
+    "/locale",          # Localization
+    "/font",            # Font resources
     "/favicon.ico",     # Browser auto-request
-)
+    "/dashboard/",      # Dashboard UI
+]
+
+# Deprecated: kept for backward compatibility
+SAFE_INTERNAL_PREFIXES = tuple(SAFE_ENDPOINTS)
 
 
 def is_safe_internal_request(uri: str) -> bool:
@@ -156,9 +165,10 @@ def is_safe_internal_request(uri: str) -> bool:
     - /rest/products/list (product data)
     - /socket.io/* (real-time communication)
     - /assets/* (static files)
+    - /api/* (application API endpoints)
     
-    For these endpoints, we still check for attacks but with bias toward allowing
-    legitimate requests and only blocking strong attack signatures.
+    For these endpoints, we check for attacks but ONLY block on obvious/strong
+    attack signatures. Normal application traffic is ALWAYS allowed.
     
     Args:
         uri: The full URI including query string
@@ -166,10 +176,14 @@ def is_safe_internal_request(uri: str) -> bool:
     Returns:
         True if this is a safe internal endpoint, False otherwise
     """
-    uri_lower = (uri or "").lower()
+    if not uri:
+        return False
     
-    for safe_prefix in SAFE_INTERNAL_PREFIXES:
-        if safe_prefix in uri_lower or uri_lower.startswith(safe_prefix):
+    uri_lower = uri.lower()
+    
+    # Fast check: if URI starts with any known safe prefix, it's safe
+    for safe_prefix in SAFE_ENDPOINTS:
+        if uri_lower.startswith(safe_prefix):
             return True
     
     return False
@@ -177,16 +191,16 @@ def is_safe_internal_request(uri: str) -> bool:
 
 def is_strong_attack(uri: str, ai_probability: float = 0.0, has_signals: bool = False) -> bool:
     """
-    Detect strong/obvious attacks that should always be blocked.
+    Detect strong/obvious attacks that should ALWAYS be blocked.
     
-    Strong attacks include:
-    - Direct signature matches (SQL injection keywords, XSS patterns, etc.)
-    - Encoding attacks (null bytes, percentage encoding)
-    - High AI confidence PLUS suspicious signals
+    This is the final gatekeeper for safe internal endpoints.
+    We only block if attack signature is UNMISTAKABLE (Tier 1).
     
-    This function is used to determine if we should block a request on a 
-    safe internal endpoint. We're permissive with safe endpoints but
-    strict with obvious attacks.
+    Tier 1 Examples:
+    - "or 1=1" in SQL context
+    - "<script>" directly in URI
+    - "../" path traversal
+    - Null bytes or obvious encoding
     
     Args:
         uri: The full URI to check
@@ -194,51 +208,61 @@ def is_strong_attack(uri: str, ai_probability: float = 0.0, has_signals: bool = 
         has_signals: Whether suspicious signals were detected
         
     Returns:
-        True if this is a strong attack, False otherwise
+        True if this is a TIER 1 strong attack, False otherwise
     """
+    if not uri:
+        return False
+    
     decoded_uri = unquote_plus(unquote_plus(uri))
     normalized = decoded_uri.lower()
     
-    # ===== TIER 1: Direct Signature Matches (ALWAYS BLOCK) =====
-    # These are obvious attack patterns - no ambiguity
-    direct_attack_signatures = [
-        "or 1=1",           # SQL injection
-        "and 1=1",          # SQL injection
-        "union select",     # SQL injection
-        "union all select", # SQL injection
-        "<script",          # XSS
-        "javascript:",      # XSS
+    # ===== TIER 1: Direct Signature Matches (ABSOLUTE BLOCK) =====
+    # Only these are considered "strong attacks" for safe endpoints
+    tier1_signatures = [
+        "or 1=1",           # Classic SQL injection
+        "and 1=1",          # SQL injection variant
+        "union select",     # SQL UNION injection
+        "union all select", # SQL UNION variant
+        "<script",          # XSS script tag
+        "javascript:",      # XSS javascript URL
         "../",              # Path traversal
-        "..\\",             # Path traversal
+        "..\\",             # Path traversal Windows
+        "etc/passwd",       # File access attempt
+        "drop table",       # SQL destruction
+        "drop database",    # SQL destruction
+        "; delete from",    # SQL injection
         "%00",              # Null byte
-        "; drop",           # SQL injection
-        "; delete",         # SQL injection
     ]
     
-    if any(sig in normalized for sig in direct_attack_signatures):
-        return True  # Strong attack - block immediately
+    if any(sig in normalized for sig in tier1_signatures):
+        log_event(
+            "warning",
+            "tier1_attack_detected",
+            uri=uri[:180],
+            detected_pattern="[signature matched]"
+        )
+        return True  # Strong attack - block it
     
     # ===== TIER 2: Encoding Attacks (BLOCK) =====
-    # These are obvious obfuscation attempts
-    encoding_attack_patterns = [
+    # Double-encoded attacks are obvious bypass attempts
+    encoding_patterns = [
         r"%2e%2e",          # Encoded ../
-        r"%252e",           # Double encoded .
-        r"%00",             # Null byte
-        r"&#",              # HTML entities
+        r"%252e%252e",      # Double encoded ../
+        r"%3c%73%63%72%69%70%74",  # Encoded <script>
     ]
     
-    for pattern in encoding_attack_patterns:
+    for pattern in encoding_patterns:
         if re.search(pattern, uri, re.IGNORECASE):
-            return True  # Encoding attack - block immediately
+            log_event(
+                "warning",
+                "tier2_encoding_attack_detected",
+                uri=uri[:180],
+                pattern=pattern
+            )
+            return True  # Encoding attack - block it
     
-    # ===== TIER 3: High AI Confidence + Signals (BLOCK) =====
-    # Only block safe internal endpoints if BOTH conditions are met:
-    # - AI is very confident (>0.95)
-    # - There are corroborating suspicious signals
-    if ai_probability > 0.95 and has_signals:
-        return True
-    
-    # Not a strong attack
+    # ===== TIER 3: Not a strong attack =====
+    # Safe endpoints get the benefit of the doubt
     return False
 
 
@@ -552,47 +576,65 @@ async def analyze_request(request: Request):
     full_uri = full_uri[:MAX_URI_LEN]
 
     try:
-        # ===== CHECK IF THIS IS A SAFE INTERNAL ENDPOINT =====
-        is_internal = is_safe_internal_request(full_uri)
+        # ===== POLICY: Safe Endpoints Always Allowed (Unless Tier 1 Attack) =====
+        # This is the key fix: normal app traffic is NEVER blocked by AI doubt
+        is_safe_endpoint = is_safe_internal_request(full_uri)
         
-        # ===== RUN FULL WAF EVALUATION =====
-        status, reason, probability = evaluate_request(original_method, full_uri)
-        
-        # ===== ADAPTIVE DECISION LOGIC =====
-        # For safe internal endpoints: be lenient unless strong attack is detected
-        if is_internal and status == "blocked":
-            # Check if this is a strong/obvious attack
-            decoded_uri = unquote_plus(unquote_plus(full_uri))
-            is_keyword_suspicious, _ = detect_suspicious_keywords(decoded_uri)
-            has_encoding = detect_encoding_attacks(full_uri)
-            has_injection = detect_injection_patterns(decoded_uri)
-            is_char_anomaly, _ = detect_special_char_anomaly(decoded_uri)
-            has_signals = is_keyword_suspicious or has_encoding or has_injection or is_char_anomaly
-            
-            # If NOT a strong attack on safe endpoint, allow it
-            if not is_strong_attack(full_uri, probability, has_signals):
-                status = "allowed"
-                reason = f"safe_internal_lenient:{reason}"
+        if is_safe_endpoint:
+            # Safe endpoint: ONLY block if Tier 1 strong attack detected
+            if is_strong_attack(full_uri):
+                status = "blocked"
+                reason = "tier1_strong_attack_on_safe_endpoint"
+                probability = 1.0
                 log_event(
-                    "info",
-                    "safe_internal_allowed",
+                    "warning",
+                    "safe_endpoint_tier1_attack",
+                    ip=original_ip,
+                    method=original_method,
+                    uri=full_uri[:180],
+                )
+            else:
+                # Safe endpoint + no Tier 1 attack = ALWAYS allow
+                status = "allowed"
+                reason = "safe_endpoint_default_allow"
+                probability, _ = infer_malicious_probability(original_method, full_uri)
+                log_event(
+                    "debug",
+                    "safe_endpoint_allowed",
+                    ip=original_ip,
+                    method=original_method,
+                    uri=full_uri[:180],
+                    ai_prob=round(probability, 4),
+                )
+        else:
+            # ===== Non-safe endpoint: Run full evaluation =====
+            # User input endpoints get aggressive security
+            status, reason, probability = evaluate_request(original_method, full_uri)
+            
+            if status == "blocked":
+                log_event(
+                    "warning",
+                    "user_endpoint_blocked",
                     reason=reason,
                     ip=original_ip,
                     method=original_method,
                     uri=full_uri[:180],
-                    probability=round(probability, 4),
+                    ai_prob=round(probability, 4),
                 )
         
         # ===== LOG REQUEST =====
         log_request(original_ip, full_uri, original_method, status, reason, probability)
+        
+        # ===== DEBUG LOGGING =====
         log_event(
-            "warning" if status == "blocked" else "info",
-            "request_decision",
-            action=status,
+            "info",
+            "request_decision_final",
+            decision=status,
             reason=reason,
+            is_safe_endpoint=is_safe_endpoint,
+            uri=full_uri[:180],
             ip=original_ip,
             method=original_method,
-            uri=full_uri[:180],
             probability=round(probability, 4),
         )
 
