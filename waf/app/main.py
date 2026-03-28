@@ -266,6 +266,47 @@ def is_strong_attack(uri: str, ai_probability: float = 0.0, has_signals: bool = 
     return False
 
 
+def detect_csrf(request: Request, uri: str) -> tuple[bool, str]:
+    """
+    Detect likely CSRF using header consistency checks.
+
+    Only evaluates state-changing methods to avoid breaking normal read-only traffic.
+    """
+    method = request.headers.get("X-Original-Method", request.method).upper()
+
+    # Only check for state-changing methods
+    if method not in ["POST", "PUT", "DELETE", "PATCH"]:
+        return False, "safe_method"
+
+    origin = request.headers.get("origin")
+    referer = request.headers.get("referer")
+    host = request.headers.get("host")
+
+    origin_l = origin.lower() if origin else ""
+    referer_l = referer.lower() if referer else ""
+    host_l = host.lower() if host else ""
+
+    # Case 1: Both missing -> suspicious
+    if not origin and not referer:
+        return True, "missing_origin_referer"
+
+    # Case 2: Origin mismatch
+    if origin and host and host_l not in origin_l:
+        return True, "origin_mismatch"
+
+    # Case 3: Referer mismatch
+    if referer and host and host_l not in referer_l:
+        return True, "referer_mismatch"
+
+    # Optional signal: missing anti-CSRF token for state-changing requests.
+    # This is suspicious but not blocked by itself.
+    csrf_token = request.headers.get("x-csrf-token")
+    if not csrf_token:
+        return False, "missing_csrf_token_suspicious"
+
+    return False, "safe"
+
+
 class TestRequest(BaseModel):
     url: str = Field(min_length=1, max_length=MAX_TEST_URL_LEN)
 
@@ -576,10 +617,42 @@ async def analyze_request(request: Request):
     full_uri = full_uri[:MAX_URI_LEN]
 
     try:
+        is_safe_endpoint = is_safe_internal_request(full_uri)
+
+        # ===== CSRF CHECK (before AI detection) =====
+        is_csrf, csrf_reason = detect_csrf(request, full_uri)
+        origin = request.headers.get("origin")
+        referer = request.headers.get("referer")
+        csrf_method = request.headers.get("X-Original-Method", request.method).upper()
+        print(
+            f"[CSRF] URI={full_uri}, method={csrf_method}, origin={origin}, "
+            f"referer={referer}, decision={is_csrf}"
+        )
+
+        if csrf_reason == "missing_csrf_token_suspicious":
+            log_event(
+                "debug",
+                "csrf_token_missing",
+                uri=full_uri[:180],
+                method=csrf_method,
+                is_safe_endpoint=is_safe_endpoint,
+            )
+
+        if is_csrf and not is_safe_endpoint:
+            log_event(
+                "warning",
+                "csrf_detected",
+                action="blocked",
+                uri=full_uri[:180],
+                method=csrf_method,
+                reason=csrf_reason,
+                ip=original_ip,
+            )
+            log_request(original_ip, full_uri, original_method, "blocked", f"csrf:{csrf_reason}", 1.0)
+            return Response(status_code=403)
+
         # ===== POLICY: Safe Endpoints Always Allowed (Unless Tier 1 Attack) =====
         # This is the key fix: normal app traffic is NEVER blocked by AI doubt
-        is_safe_endpoint = is_safe_internal_request(full_uri)
-        
         if is_safe_endpoint:
             # Safe endpoint: ONLY block if Tier 1 strong attack detected
             if is_strong_attack(full_uri):
