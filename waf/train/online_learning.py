@@ -1,4 +1,27 @@
-import torch
+"""
+DISABLED — do not use in experiments or production.
+
+This module is intentionally not runnable. Two unfixed problems make it unsafe
+and unpublishable:
+
+  1. It instantiated WAFTransformer(vocab_size=..., d_model=..., num_layers=...)
+     with constructor arguments the class does not accept -> immediate crash.
+  2. Its core assumption ("every request that was allowed is benign, label 0")
+     is a label-poisoning vulnerability: an attacker whose payload slips through
+     once gets it reinforced as benign. Self-training on unlabeled production
+     traffic without human verification is a known attack surface.
+
+For the paper, present safe online adaptation as FUTURE WORK (human-in-the-loop
+labeling, verified feedback, drift monitoring). Do NOT present or benchmark the
+logic below. Kept only for history.
+"""
+raise SystemExit(
+    "online_learning.py is disabled by design (see module docstring). "
+    "Safe online adaptation is future work, not part of the evaluated system."
+)
+
+
+import torch  # noqa: E402  (unreachable; retained for reference)
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader

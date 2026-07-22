@@ -1,0 +1,223 @@
+%=======================================================================
+% IEEE CONFERENCE paper (Scopus-indexed IEEE/Springer conference target).
+% Compile on Overleaf: pdfLaTeX, run twice + BibTeX.
+% This is a condensed version of the journal manuscript; keep textual
+% overlap with the journal below ~30% and cite the conference version
+% from the journal paper.
+%
+% RED [PLACEHOLDER] = fill from research/ pipeline results.
+%=======================================================================
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage[table]{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric,arrows.meta,positioning}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[hidelinks]{hyperref}
+
+\newcommand{\ph}[1]{{\color{red}\textbf{[#1]}}}
+
+\begin{document}
+
+\title{A Hybrid Rule--Transformer Web Application Firewall\\
+with Inline Blocking and False-Positive-Controlled Fusion}
+
+\author{\IEEEauthorblockN{Rhenius Abraham}
+\IEEEauthorblockA{Dept.\ of Cyber Security Engineering\\
+\ph{Institution}\\
+\ph{City, Country}\\
+rhenius1603@gmail.com}
+\and
+\IEEEauthorblockN{\ph{Co-author}}
+\IEEEauthorblockA{\ph{Department}\\
+\ph{Institution}\\
+\ph{City, Country}\\
+\ph{email}}
+}
+
+\maketitle
+
+\begin{abstract}
+Signature-based web application firewalls (WAFs) are brittle against obfuscation,
+while transformer-based detectors report near-perfect offline accuracy yet are
+seldom deployed inline, leave latency unmeasured, and ignore the cost of false
+positives. We present a WAF that places a fine-tuned transformer in a transparent
+inline enforcement path built on Nginx \texttt{auth\_request}, governed by a
+four-tier rule--model decision-fusion policy designed to bound false positives.
+We evaluate it end to end---detection quality, an ablation isolating the model's
+contribution, measured inline latency, and adversarial evasion. The hybrid
+attains F1~\ph{} at FPR~\ph{} while adding \ph{}~ms median overhead per request.
+\end{abstract}
+
+\begin{IEEEkeywords}
+web application firewall, transformer, BERT, inline enforcement, decision fusion.
+\end{IEEEkeywords}
+
+\section{Introduction}
+Injection-style attacks (SQL injection, XSS, path traversal, command injection)
+dominate the OWASP Top Ten, and WAFs are the standard mitigation. Production WAFs
+rely on signatures and regular expressions~\cite{owaspcrs}: fast and auditable
+but matching syntax, not intent, so encoded or comment-laden payloads evade them
+while tighter rules raise false positives. Transformer language
+models~\cite{vaswani2017attention,devlin2019bert} promise to model payload
+structure directly, and a large literature reports $>$99\% accuracy on
+CSIC~2010~\cite{wadbert2026,liu2024bertlstm}. That work, however, stops at
+offline classification: it does not place the model in an enforcement path,
+report latency, control false positives at an operating point, or test transfer
+to unseen traffic. We build a deployable hybrid WAF and characterise it along
+exactly those axes. Contributions: (i)~a transparent inline architecture using
+\texttt{auth\_request}; (ii)~a false-positive-controlled four-tier fusion policy;
+(iii)~an end-to-end evaluation with ablation, latency and adversarial-evasion
+results.
+
+\section{Related Work}
+A recent survey situates transformers and LLMs for intrusion
+detection~\cite{kheddar2025survey}. Rule sets such as OWASP CRS~\cite{owaspcrs}
+are the practical baseline but match surface strings; classical ML on
+CSIC~2010~\cite{gimenez2010csic,payloadml2024svmrfxgb} depends on handcrafted
+features. Recent deep and transformer detectors report $>$99\% within-corpus
+accuracy for SQLi/XSS~\cite{scireports2024novelxsssqli,liu2024bertlstm,wadbert2026},
+with enhanced neural architectures~\cite{zhou2025ewebguard} and BERT applied to
+intrusion detection~\cite{yang2025bertids,sdnbert2024}; domain encoders such as
+SecureBERT~\cite{aghaei2022securebert} and compressed models such as
+DistilBERT~\cite{sanh2019distilbert} and TinyBERT~\cite{jiao2020tinybert} address
+cost. Adversarial evasion remains open: beyond
+WAF-A-MoLE~\cite{demetrio2020wafamole}, recent work crafts adversarial SQL
+injections against real-world WAFs~\cite{advsqli2024}, yet transformer-WAF papers
+rarely test evasion. Across this work, inline deployment, latency, false-positive
+control and cross-dataset generalisation are addressed rarely and never
+jointly---the gap we close (Table~\ref{tab:survey}).
+
+\begin{table}[t]
+\centering
+\caption{Representative recent work vs.\ this paper.}
+\label{tab:survey}
+\footnotesize
+\begin{tabular}{@{}p{2.2cm}p{0.6cm}p{1.7cm}p{2.2cm}@{}}
+\toprule
+Work & Year & Approach & Gap for WAF use \\
+\midrule
+WADBERT~\cite{wadbert2026} & 2026 & Dual-channel BERT & Offline only \\
+BERT--LSTM~\cite{liu2024bertlstm} & 2024 & BERT+LSTM & Single class; offline \\
+E-WebGuard~\cite{zhou2025ewebguard} & 2025 & Neural arch. & No inline/latency \\
+Payload ML~\cite{payloadml2024svmrfxgb} & 2024 & SVM/RF/XGB & Handcrafted; offline \\
+AdvSQLi~\cite{advsqli2024} & 2024 & Adv. SQLi & Attack; robustness open \\
+\textbf{This work} & -- & Hybrid, inline & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{System Architecture}
+The WAF is a reverse proxy in three containers: an Nginx edge proxy, a detection
+service (rules + transformer), and the unmodified backend
+(Fig.~\ref{fig:arch}). Nginx's \texttt{auth\_request} turns every request into an
+internal sub-request to the detection service, which replies \texttt{200}
+(allow) or \texttt{403} (block); enforcement is inline and no request reaches the
+backend before adjudication. The detection service applies four tiers: (1)
+unambiguous signatures after double URL-decoding; (2) anomaly/injection rules;
+(3) transformer scoring; (4) fusion (Algorithm~\ref{alg:fusion}). Safe internal
+endpoints are checked only at Tier~1, and unhandled errors fail open.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  node distance=5mm and 8mm,
+  box/.style={draw,rounded corners,align=center,minimum height=7mm,
+              minimum width=17mm,font=\scriptsize},
+  every edge/.style={draw,-{Latex[length=1.8mm]}}]
+  \node[box] (client) {Client};
+  \node[box,right=of client] (nginx) {Nginx\\\texttt{auth\_request}};
+  \node[box,below=of nginx] (waf) {Rules +\\transformer};
+  \node[box,right=of nginx] (app) {Backend};
+  \draw (client) edge (nginx);
+  \draw (nginx.south) edge[bend right=15] node[left,font=\tiny]{sub-req} (waf.north);
+  \draw (waf.east) edge[bend right=25] node[right,font=\tiny]{200/403} (nginx.south east);
+  \draw (nginx) edge node[above,font=\tiny]{if 200} (app);
+\end{tikzpicture}
+\caption{Inline enforcement via \texttt{auth\_request}.}
+\label{fig:arch}
+\end{figure}
+
+\begin{algorithm}[t]
+\caption{Decision fusion (Tier 4)}
+\label{alg:fusion}
+\begin{algorithmic}[1]
+\Require $(\text{method},\text{uri})$, model score $p$, $\tau_h{=}0.98$, $\tau_\ell{=}0.90$
+\State $u \gets \text{doubleDecode}(\text{uri})$
+\If{$\text{directSignature}(u)$} \Return \textsc{block} \EndIf
+\State $s \gets \text{ruleSignals}(u)$
+\If{$(s.\text{keyword} \wedge s.\text{injection}) \vee s.\text{encoding}$}
+   \Return \textsc{block} \EndIf
+\If{$p > \tau_h \wedge s.\text{hasSignal}$} \Return \textsc{block} \EndIf
+\If{$\tau_\ell \le p < \tau_h \wedge (s.\text{keyword} \vee s.\text{charAnom})$}
+   \Return \textsc{block} \EndIf
+\State \Return \textsc{allow}
+\end{algorithmic}
+\end{algorithm}
+
+\section{Methodology and Setup}
+Detection is binary classification of $x=\texttt{METHOD}\,\Vert\,\texttt{URI}'$.
+Requests are double URL-decoded, digit runs masked, and tokenised (WordPiece,
+max 256). We fine-tune \texttt{bert-base-uncased}~\cite{devlin2019bert},
+SecureBERT~\cite{aghaei2022securebert} and DistilBERT~\cite{sanh2019distilbert}
+with AdamW and early stopping on validation F1. Data: CSIC~2010~\cite{gimenez2010csic}
+and \ph{second corpus}, split $70/15/15$ stratified (seed 42). We report
+precision, recall, F1, FPR and AUC, emphasising FPR; baselines are the rule
+engine alone and TF--IDF character-$n$-gram SVM/RF. Environment: \ph{CPU/GPU},
+PyTorch~\ph{}, Transformers~\ph{}.
+
+\section{Results}
+\emph{Fill red placeholders from the \texttt{research/} scripts.}
+
+\begin{table}[t]
+\centering
+\caption{Detection and ablation on CSIC 2010 (test).}
+\label{tab:main}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Method & P & R & F1 & FPR & AUC \\
+\midrule
+Rules only            & \ph{} & \ph{} & \ph{} & \ph{} & --- \\
+TF--IDF + SVM         & \ph{} & \ph{} & \ph{} & \ph{} & \ph{} \\
+TF--IDF + RF          & \ph{} & \ph{} & \ph{} & \ph{} & \ph{} \\
+BERT (model only)     & \ph{} & \ph{} & \ph{} & \ph{} & \ph{} \\
+\textbf{Hybrid (ours)}& \ph{} & \ph{} & \ph{} & \ph{} & \ph{} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Inline latency (per request) and evasion.}
+\label{tab:latency}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Config & p50 (ms) & p99 (ms) & RPS & Evasion \\
+\midrule
+Nginx only    & \ph{} & \ph{} & \ph{} & --- \\
++ BERT (GPU)  & \ph{} & \ph{} & \ph{} & \ph{} \\
++ DistilBERT  & \ph{} & \ph{} & \ph{} & \ph{} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:main} shows \ph{headline detection result and hybrid vs.\ rules/ML};
+Table~\ref{tab:latency} shows \ph{latency overhead and evasion rate}. Cross-dataset
+transfer retains F1~\ph{} on the unseen corpus.
+
+\section{Conclusion}
+We built a deployable hybrid rule--transformer WAF with inline
+\texttt{auth\_request} enforcement and false-positive-aware fusion, and evaluated
+it end to end rather than offline. \ph{Headline sentence once filled.} Future
+work: distillation for latency, request-body inspection, adversarial training.
+
+\bibliographystyle{IEEEtran}
+\bibliography{../references}
+
+\end{document}

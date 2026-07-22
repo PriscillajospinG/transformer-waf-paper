@@ -1,9 +1,16 @@
-# 🛡️ SecureBERT WAF — AI-Powered Web Application Firewall
+# 🛡️ Transformer WAF — A Hybrid Rule + Transformer Web Application Firewall
 
-**Protect any web application from attacks in minutes. No code changes needed.**
+**A research prototype: transparent inline detection of common web attacks (SQLi, XSS, path traversal, encoding) using a fine-tuned transformer combined with a deterministic rule engine.**
 
-[![Status](https://img.shields.io/badge/Status-Production--Ready-brightgreen)](https://github.com)
-[![Model](https://img.shields.io/badge/Model-SecureBERT-blue)](https://huggingface.co/bert-base-uncased)
+> ⚠️ **Research prototype, not a production security product.** It inspects the
+> HTTP request line/URI (and POST body when available) for injection-style
+> attacks. It does NOT stop application logic flaws, authentication bypass,
+> DDoS, SSRF, or supply-chain attacks, and has not undergone production security
+> hardening. The transformer base model is configurable (`WAF_BASE_MODEL`);
+> the historical default is `bert-base-uncased`, NOT the SecureBERT model.
+
+[![Status](https://img.shields.io/badge/Status-Research--Prototype-yellow)](https://github.com)
+[![Model](https://img.shields.io/badge/Model-Configurable%20Transformer-blue)](https://huggingface.co/models)
 [![Docker](https://img.shields.io/badge/Platform-Docker%20Compose-orange)](https://docker.com)
 [![License](https://img.shields.io/badge/License-MIT-green)](#-license)
 
@@ -69,7 +76,7 @@
 |---------|-------------|
 | **AI Detection** | SecureBERT Transformer models request content semantically |
 | **Rule-Based Filtering** | Catches known attack patterns (SQL injection, XSS, path traversal) |
-| **Zero-Day Protection** | AI detects never-before-seen attack variants |
+| **Generalization to variants** | Transformer flags obfuscated/unseen variants of known attack classes (evaluate with the cross-dataset scripts in `research/`; avoid the term "zero-day") |
 | **Real-Time Dashboard** | Live monitoring with charts and request logs |
 | **Plug-and-Play** | Drop in front of ANY web application |
 | **Docker Deployment** | One command: `docker-compose up -d --build` |
@@ -988,7 +995,9 @@ MIT License — Free for educational and commercial use. See [LICENSE](LICENSE) 
 **A:** Free! MIT License. You can use it commercially without paying.
 
 ### Q: Is it production-ready?
-**A:** Yes, but test thoroughly with your application first. Adjust detection thresholds as needed.
+**A:** No. This is a research prototype for evaluating hybrid transformer-based
+detection. It lacks TLS termination, rate limiting, request-body inspection at
+scale, and production security hardening. Do not rely on it as your only defense.
 
 ### Q: What attacks does it detect?
 **A:** SQL injection, XSS, path traversal, command injection, encoding attacks, and unknown variants via AI.
@@ -1017,10 +1026,9 @@ MIT License — Free for educational and commercial use. See [LICENSE](LICENSE) 
 
 ---
 
-**Last Updated:** March 2024  
-**Status:** Production-Ready ✅  
+**Status:** Research prototype  
 **License:** MIT 📜
 
 ---
 
-> 🛡️ **Protect your applications with AI-powered security.**
+> 🛡️ **A research prototype for hybrid transformer-based web attack detection.** See `research/` for the reproducible evaluation pipeline and `JOURNAL_PAPER_SKELETON.md` / `RESEARCH_GAP_ANALYSIS.md` for the paper plan.
