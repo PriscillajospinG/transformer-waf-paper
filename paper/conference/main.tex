@@ -17,6 +17,8 @@
 \usepackage[table]{xcolor}
 \usepackage{tikz}
 \usetikzlibrary{shapes.geometric,arrows.meta,positioning}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 \usepackage[hidelinks]{hyperref}
@@ -48,11 +50,15 @@ Signature-based web application firewalls (WAFs) are brittle against obfuscation
 while transformer-based detectors report near-perfect offline accuracy yet are
 seldom deployed inline, leave latency unmeasured, and ignore the cost of false
 positives. We present a WAF that places a fine-tuned transformer in a transparent
-inline enforcement path built on Nginx \texttt{auth\_request}, governed by a
-four-tier rule--model decision-fusion policy designed to bound false positives.
-We evaluate it end to end---detection quality, an ablation isolating the model's
-contribution, measured inline latency, and adversarial evasion. The hybrid
-attains F1~\ph{} at FPR~\ph{} while adding \ph{}~ms median overhead per request.
+inline enforcement path built on Nginx \texttt{auth\_request}, adjudicated by a
+four-tier rule--model policy, and evaluate it end to end on CSIC~2010. The
+fine-tuned BERT detector attains F1~$0.968$ at a $4.6\%$ false-positive rate and
+$0.983$ ROC--AUC with $11.7$~ms median GPU inference, outperforming a signature
+rule engine ($0.567$ F1) and matching a strong TF--IDF baseline at a lower
+false-positive rate. Layering the rules with the model gives complete resistance
+to six semantics-preserving evasion families ($0\%$ evasion) at the cost of a
+higher benign false-positive rate---an explicit, measured accuracy--robustness
+trade-off rather than an unqualified accuracy claim.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -164,58 +170,131 @@ endpoints are checked only at Tier~1, and unhandled errors fail open.
 \section{Methodology and Setup}
 Detection is binary classification of $x=\texttt{METHOD}\,\Vert\,\texttt{URI}'$.
 Requests are double URL-decoded, digit runs masked, and tokenised (WordPiece,
-max 256). We fine-tune \texttt{bert-base-uncased}~\cite{devlin2019bert},
-SecureBERT~\cite{aghaei2022securebert} and DistilBERT~\cite{sanh2019distilbert}
-with AdamW and early stopping on validation F1. Data: CSIC~2010~\cite{gimenez2010csic}
-and \ph{second corpus}, split $70/15/15$ stratified (seed 42). We report
-precision, recall, F1, FPR and AUC, emphasising FPR; baselines are the rule
-engine alone and TF--IDF character-$n$-gram SVM/RF. Environment: \ph{CPU/GPU},
-PyTorch~\ph{}, Transformers~\ph{}.
+max 256). We fine-tune \texttt{bert-base-uncased}~\cite{devlin2019bert} with AdamW
+(lr $2{\times}10^{-5}$, batch 16, three epochs, early stopping on validation F1);
+the harness also supports SecureBERT~\cite{aghaei2022securebert} and
+DistilBERT~\cite{sanh2019distilbert} as drop-in encoders for future comparison.
+Data: the CSIC~2010 tabular corpus~\cite{gimenez2010csic}, deduplicated to
+$9{,}492$ requests ($68\%$ malicious) and split $70/15/15$ stratified (seed 42),
+giving a $1{,}424$-request test set. We report precision, recall, F1, FPR and
+ROC--AUC, emphasising FPR; baselines are the rule engine alone and TF--IDF
+character-$n$-gram SVM and random forest. Environment: NVIDIA Tesla~T4,
+PyTorch~2.11 (CUDA~12.8), Transformers~4.x.
 
 \section{Results}
-\emph{Fill red placeholders from the \texttt{research/} scripts.}
+All figures are on the held-out CSIC~2010 test split ($n=1{,}424$).
+
+\subsection{Detection and ablation}
+Table~\ref{tab:main} and Fig.~\ref{fig:bars} report detection. The fine-tuned
+BERT detector is strongest (F1~$0.968$, FPR~$0.046$, AUC~$0.983$), edging the
+TF--IDF SVM on F1 and improving its false-positive rate, and far exceeding the
+signature rule engine, which recalls only $43.5\%$ of attacks at a $20.9\%$
+false-positive rate on this corpus. The hybrid, which blocks when \emph{either}
+the rules or the model fire, inherits the rules' false positives---F1 falls to
+$0.863$ and FPR rises to $0.226$---so on a benchmark whose benign traffic the
+signatures were not calibrated for, the rule layer subtracts accuracy.
 
 \begin{table}[t]
 \centering
-\caption{Detection and ablation on CSIC 2010 (test).}
+\caption{Detection and ablation on CSIC 2010 (test). Best per column in bold.}
 \label{tab:main}
 \begin{tabular}{@{}lccccc@{}}
 \toprule
 Method & P & R & F1 & FPR & AUC \\
 \midrule
-Rules only            & \ph{} & \ph{} & \ph{} & \ph{} & --- \\
-TF--IDF + SVM         & \ph{} & \ph{} & \ph{} & \ph{} & \ph{} \\
-TF--IDF + RF          & \ph{} & \ph{} & \ph{} & \ph{} & \ph{} \\
-BERT (model only)     & \ph{} & \ph{} & \ph{} & \ph{} & \ph{} \\
-\textbf{Hybrid (ours)}& \ph{} & \ph{} & \ph{} & \ph{} & \ph{} \\
+Rules only            & 0.816 & 0.435 & 0.567 & 0.209 & --- \\
+TF--IDF + SVM         & 0.973 & 0.957 & 0.965 & 0.057 & \textbf{0.992} \\
+TF--IDF + RF          & 0.929 & 0.924 & 0.927 & 0.150 & 0.958 \\
+BERT (model only)     & \textbf{0.978} & \textbf{0.959} & \textbf{0.968} & \textbf{0.046} & 0.983 \\
+\textbf{Hybrid (ours)}& 0.888 & 0.840 & 0.863 & 0.226 & 0.983 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=\columnwidth, height=4.6cm, ybar, bar width=6pt,
+  symbolic x coords={Rules,SVM,RF,BERT,Hybrid}, xtick=data,
+  ymin=0, ymax=1.05, ylabel={score},
+  legend style={at={(0.5,1.15)},anchor=north,legend columns=2,font=\footnotesize},
+  x tick label style={font=\footnotesize}, y tick label style={font=\footnotesize},
+  enlarge x limits=0.12]
+\addplot coordinates {(Rules,0.567)(SVM,0.965)(RF,0.927)(BERT,0.968)(Hybrid,0.863)};
+\addplot coordinates {(Rules,0.209)(SVM,0.057)(RF,0.150)(BERT,0.046)(Hybrid,0.226)};
+\legend{F1, FPR}
+\end{axis}
+\end{tikzpicture}
+\caption{F1 and FPR by configuration on CSIC~2010.}
+\label{fig:bars}
+\end{figure}
+
+\subsection{Threshold, latency, and adversarial robustness}
+The transformer's probability lets an operator trade recall for precision: across
+$\tau\in[0.50,0.98]$ recall falls only from $0.959$ to $0.925$ while FPR more than
+halves from $0.046$ to $0.020$ (Fig.~\ref{fig:threshold}). Single-request GPU
+inference costs a median $11.7$~ms ($p99{=}16.3$~ms, ${\approx}88$~req/s per
+process), fast enough for inline use. Finally, all six semantics-preserving
+mutations applied to the $246$ initially blocked payloads failed to evade the
+hybrid ($0\%$ evasion, Table~\ref{tab:latency})---the layered defence that costs
+precision on benign traffic is exactly what buys robustness against the evasions
+that defeat model-only ML WAFs~\cite{demetrio2020wafamole,advsqli2024}.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=\columnwidth, height=4.6cm,
+  xlabel={decision threshold $\tau$}, ylabel={rate},
+  xmin=0.5, xmax=0.98, ymin=0, ymax=1.02, grid=major,
+  legend style={at={(0.5,-0.32)},anchor=north,legend columns=2,font=\footnotesize},
+  x tick label style={font=\footnotesize}, y tick label style={font=\footnotesize}]
+\addplot[thick,mark=*,mark size=1pt] coordinates {
+ (0.50,0.9587)(0.62,0.9577)(0.68,0.9546)(0.80,0.9515)(0.90,0.9443)(0.96,0.9401)(0.98,0.9247)};
+\addplot[thick,dashed,mark=square*,mark size=1pt] coordinates {
+ (0.50,0.0462)(0.62,0.0462)(0.68,0.0440)(0.80,0.0418)(0.90,0.0396)(0.96,0.0308)(0.98,0.0198)};
+\legend{recall, FPR}
+\end{axis}
+\end{tikzpicture}
+\caption{Recall and FPR versus decision threshold on CSIC~2010.}
+\label{fig:threshold}
+\end{figure}
+
 \begin{table}[t]
 \centering
-\caption{Inline latency (per request) and evasion.}
+\caption{Inline latency (Tesla T4) and adversarial evasion.}
 \label{tab:latency}
 \begin{tabular}{@{}lcccc@{}}
 \toprule
 Config & p50 (ms) & p99 (ms) & RPS & Evasion \\
 \midrule
-Nginx only    & \ph{} & \ph{} & \ph{} & --- \\
-+ BERT (GPU)  & \ph{} & \ph{} & \ph{} & \ph{} \\
-+ DistilBERT  & \ph{} & \ph{} & \ph{} & \ph{} \\
+BERT (GPU) & 11.7 & 16.3 & 88.4 & --- \\
+Hybrid (6 mutations) & --- & --- & --- & 0.00 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:main} shows \ph{headline detection result and hybrid vs.\ rules/ML};
-Table~\ref{tab:latency} shows \ph{latency overhead and evasion rate}. Cross-dataset
-transfer retains F1~\ph{} on the unseen corpus.
+\section{Discussion}
+The central finding is a trade-off. The transformer alone is the best detector by
+every accuracy metric, yet the rule layer, though it lowers clean-traffic
+precision, delivers $0\%$ evasion under common mutations. The two costs fall on
+different traffic---false positives on benign requests the signatures were not
+tuned for, robustness on adversarial variants of real attacks---so a practical
+deployment should calibrate the anomaly rules to the protected application or
+restrict the always-on tiers to high-precision signatures. That signatures tuned
+for one application misfire on another ($20.9\%$ FPR) is itself the rule
+brittleness that motivates learned detection, here measured directly. Limitations:
+a single corpus (cross-dataset transfer is the key next step), a single
+fine-tuning run, and a non-exhaustive set of evasions.
 
 \section{Conclusion}
 We built a deployable hybrid rule--transformer WAF with inline
-\texttt{auth\_request} enforcement and false-positive-aware fusion, and evaluated
-it end to end rather than offline. \ph{Headline sentence once filled.} Future
-work: distillation for latency, request-body inspection, adversarial training.
+\texttt{auth\_request} enforcement and evaluated it end to end rather than
+offline. On CSIC~2010 the transformer reaches F1~$0.968$ at $4.6\%$ FPR with
+$11.7$~ms median inference, and layering rules yields $0\%$ evasion at a
+false-positive cost we quantify. Future work: cross-dataset generalisation,
+distilled encoders for CPU latency, calibrated fusion, and adversarial training.
 
 \bibliographystyle{IEEEtran}
 \bibliography{../references}

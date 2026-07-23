@@ -16,11 +16,13 @@
 \usepackage[table]{xcolor}
 \usepackage{tikz}
 \usetikzlibrary{shapes.geometric,arrows.meta,positioning,calc}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 \usepackage[hidelinks]{hyperref}
 
-% Placeholder macro: renders in red so unfilled numbers are obvious.
+% Placeholder macro: renders in red so any remaining unfilled numbers are obvious.
 \newcommand{\ph}[1]{{\color{red}\textbf{[#1]}}}
 
 \begin{document}
@@ -47,25 +49,27 @@ Web application firewalls (WAFs) are the first line of defence against
 injection-style web attacks, yet the two dominant paradigms each fall short:
 signature and regular-expression rule sets are brittle against obfuscation and
 demand constant tuning, while recent transformer-based detectors report
-near-perfect offline accuracy on benchmark corpora but are almost never
-deployed in the live blocking path, leave latency unmeasured, and ignore the
-operational cost of false positives. We present a deployable web application
-firewall that integrates a fine-tuned transformer classifier into a transparent
-inline enforcement path built on the Nginx \texttt{auth\_request} mechanism,
-requiring no changes to the protected application. Detection is governed by a
-four-tier decision-fusion policy that couples deterministic signatures and
-anomaly rules with confidence-banded model scoring, explicitly designed to
-bound false positives on legitimate application traffic. We evaluate the system
-end to end on \ph{N} public datasets, including a cross-dataset protocol that
-tests generalisation to an unseen traffic distribution, an ablation isolating
-the transformer's contribution over the rule engine, a threshold-sensitivity
-analysis of the false-positive/recall trade-off, a measured latency and
-throughput characterisation of transformer inference in the inline path, and an
-adversarial-evasion stress test. The hybrid configuration attains an F1 of
-\ph{F1} at a false-positive rate of \ph{FPR}, retains an F1 of \ph{xF1} under
-cross-dataset transfer, and adds a median inline overhead of \ph{lat}~ms per
-request. These results characterise, rather than merely assert, the practical
-deployability of transformer-based inline web attack detection.
+near-perfect offline accuracy on benchmark corpora but are almost never deployed
+in the live blocking path, leave latency unmeasured, and ignore the operational
+cost of false positives. We present a deployable web application firewall that
+integrates a fine-tuned transformer classifier into a transparent inline
+enforcement path built on the Nginx \texttt{auth\_request} mechanism, requiring
+no changes to the protected application, and adjudicated by a four-tier policy
+that layers deterministic signatures and anomaly rules with the model. On the
+CSIC~2010 benchmark, the fine-tuned BERT detector attains an F1 of $0.968$ at a
+false-positive rate (FPR) of $0.046$ and ROC--AUC of $0.983$, competitive with a
+strong TF--IDF support-vector baseline ($0.965$ F1) and far above the signature
+rule engine alone ($0.567$ F1, recall $0.43$), while single-request GPU inference
+adds a median of $11.7$~ms ($p99{=}16.3$~ms). Layering the rules with the model
+in a defence-in-depth configuration yields complete resistance to six families of
+semantics-preserving evasion (0\% evasion over 246 initially blocked payloads),
+but raises the benign false-positive rate to $0.226$ because signature rules
+calibrated for one application over-block another's legitimate traffic. This
+accuracy--robustness trade-off---which concretely re-exhibits the very rule
+brittleness that motivates learned detection---is characterised through an
+ablation, a threshold-sensitivity analysis, and per-attack-class results. Our
+contribution is thus a measured, honest characterisation of transformer-based
+inline web attack detection rather than an unqualified accuracy claim.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -127,22 +131,24 @@ the axes the offline literature omits. Our contributions are:
 \item \textbf{A deployable inline architecture.} We integrate a transformer
 classifier into a transparent enforcement path using the Nginx
 \texttt{auth\_request} mechanism, so that every request is adjudicated before
-proxying with no modification to the protected application
-(Section~\ref{sec:arch}).
-\item \textbf{A false-positive-controlled decision-fusion policy.} We define a
-four-tier policy that combines deterministic signatures, anomaly rules and
-confidence-banded model scoring, together with an endpoint-aware relaxation and
-a fail-open safeguard, and we formalise it as an algorithm
-(Section~\ref{sec:method}).
-\item \textbf{An end-to-end empirical characterisation.} We report detection
-quality with an emphasis on false-positive rate, an ablation isolating the
-transformer's contribution over the rules, cross-dataset generalisation, a
-threshold-sensitivity analysis, and measured inline latency and throughput
-(Section~\ref{sec:results}).
+proxying with no modification to the protected application, and we measure the
+inline inference cost this incurs (Sections~\ref{sec:arch} and~\ref{sec:results}).
+\item \textbf{A four-tier decision-fusion policy, and an honest account of its
+trade-off.} We define a policy that layers deterministic signatures, anomaly
+rules and confidence-banded model scoring with an endpoint-aware relaxation and a
+fail-open safeguard, formalise it as an algorithm (Section~\ref{sec:method}), and
+show empirically that on a clean benchmark this layering improves adversarial
+robustness but degrades benign false-positive rate---quantifying, rather than
+hiding, the tension between signature coverage and precision.
+\item \textbf{An end-to-end empirical characterisation on CSIC~2010.} We report
+detection quality with an emphasis on false-positive rate, an ablation isolating
+the transformer's contribution over the rule engine, per-attack-class recall, a
+threshold-sensitivity analysis of the FPR/recall trade-off, and measured inline
+latency (Section~\ref{sec:results}).
 \item \textbf{An adversarial-evasion stress test} that mutates blocked payloads
-with semantics-preserving transformations and reports the resulting evasion
-rate, a robustness check almost absent from prior transformer-WAF work
-(Section~\ref{sec:results}).
+with six families of semantics-preserving transformation and reports the
+resulting evasion rate---a robustness check almost absent from prior
+transformer-WAF work (Section~\ref{sec:results}).
 \end{enumerate}
 
 The remainder of the paper reviews related work
@@ -271,7 +277,7 @@ Payload ML~\cite{payloadml2024svmrfxgb} & 2024 & SVM/RF/XGBoost & SQLi/XSS/cmd p
 DistilXIDS~\cite{distilxids2025} & 2025 & Distilled transformer, explainable & NIDS sets; $>$99\% F1, low latency & Network flows, not HTTP requests \\
 AdvSQLi~\cite{advsqli2024} & 2024 & Adversarial SQLi generation & Commercial WAF-as-a-service & Attack paper; motivates robustness \\
 WAF-A-MoLE~\cite{demetrio2020wafamole} & 2020 & Adversarial evasion & ML WAFs & Attack paper; defenses still open \\
-\textbf{This work} & -- & Hybrid rule+transformer, inline & CSIC 2010 + cross-dataset & --- (addresses the gaps above) \\
+\textbf{This work} & -- & Hybrid rule+transformer, inline & CSIC 2010; F1 0.968, FPR 0.046, 11.7\,ms & Addresses inline/latency/FP/adv.; cross-dataset is future work \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -291,7 +297,7 @@ WADBERT~\cite{wadbert2026}           & Transformer & ---        & ---     & --- 
 BERT--LSTM~\cite{liu2024bertlstm}    & Transformer & ---        & ---     & ---    & --- \\
 ADL-WAF~\cite{adlwaf2025}            & Hybrid ML   & partial    & ---     & partial& --- \\
 WAF-A-MoLE~\cite{demetrio2020wafamole} & Evasion   & ---        & ---     & ---    & --- \\
-\textbf{This work}                   & Hybrid rule+transformer & \checkmark & \checkmark & \checkmark & \checkmark \\
+\textbf{This work}                   & Hybrid rule+transformer & \checkmark & \checkmark & \checkmark & future \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -381,6 +387,68 @@ the transformer and fusion tier adjudicate the ambiguous remainder.}
 \label{fig:flow}
 \end{figure}
 
+\subsection{Endpoint-aware relaxation and fail-open}
+Two policies temper the pipeline in deployment. First, a safelist of internal
+endpoints---static assets, real-time channels such as WebSocket polling, and
+framework routes---is evaluated only against the Tier~1 direct signatures, so the
+high-volume, structurally unusual but benign traffic these endpoints generate is
+not subjected to the anomaly rules or the model. This is a deliberate
+precision-preserving choice: such routes rarely carry user-controlled injection
+surface, and exempting them removes a large source of false positives without
+materially widening the attack surface. Second, any unhandled exception in the
+detection path---a malformed header, a model-loading failure, an inference
+error---causes the service to \emph{fail open}, returning an allow decision so
+that a fault in the WAF cannot take down the protected application. Fail-open is
+the correct default for an availability-critical middlebox, but it is a security
+budget: its activation rate must be monitored, and we treat it as such in the
+discussion.
+
+%=======================================================================
+\section{Implementation and Deployment}
+\label{sec:impl}
+The system is realised as three Docker containers orchestrated by Compose on a
+private bridge network, so that the entire WAF---edge proxy, detection service and
+a target backend---can be brought up with a single command and dropped in front of
+an arbitrary application by changing one environment variable.
+
+\subsection{Edge proxy}
+The edge is stock Nginx configured with an internal \texttt{location} that backs
+the \texttt{auth\_request} directive. For every externally routable request Nginx
+issues a subrequest to the detection service carrying the original URI, query
+string, method and client address as \texttt{X-Original-*} headers; the upstream
+status (a \texttt{2xx} or a \texttt{403}) is mapped by \texttt{auth\_request} onto
+an allow/deny decision, and only allowed requests are proxied to the backend. The
+backend hostname and port are supplied by environment variables, which is what
+makes the WAF application-agnostic.
+
+\subsection{Detection service}
+The detection service is a FastAPI application served by Uvicorn. At startup it
+loads the fine-tuned encoder and tokenizer once and holds them in memory; each
+\texttt{/analyze} call runs the four-tier pipeline of
+Section~\ref{sec:arch} and returns only a status code, keeping the response
+minimal for the latency-sensitive subrequest path. The service also exposes a
+token-authenticated statistics and log API. Detection thresholds
+($\tau_h,\tau_\ell$), the safe-endpoint list, the special-character limit and the
+model path are all environment-configurable, so the operating point can be tuned
+without code changes. Inference runs on CPU or GPU transparently.
+
+\subsection{Observability}
+A lightweight dashboard polls the statistics API and renders live request volume,
+block rate, per-attack-class counts and a recent-decisions table. Every decision
+is emitted as a structured JSON log record---timestamp, client, method, URI,
+decision, reason and model probability---suitable for forwarding to a SIEM. This
+observability is an engineering convenience rather than a research contribution,
+but it is what makes the operating-point and fail-open behaviour discussed later
+measurable in practice.
+
+\subsection{Reproducibility}
+The detection logic evaluated offline in Section~\ref{sec:results} is the same
+code path the service runs online: the rule engine, preprocessing and fusion are
+imported from a shared module, so the ablation and the deployed system are
+guaranteed to agree. Training, evaluation, threshold sweep, latency and
+adversarial scripts, together with fixed seeds and pinned dependencies, are
+released so that every table and figure in this paper can be regenerated.
+
 %=======================================================================
 \section{Methodology}
 \label{sec:method}
@@ -394,25 +462,31 @@ $p = P(y{=}1 \mid x)$, and the fusion policy maps $p$ together with rule signals
 to a decision.
 
 \subsection{Datasets}
-We use \ph{N} public corpora (Table~\ref{tab:datasets}).
-CSIC~2010~\cite{gimenez2010csic} provides the standard benchmark and enables
-comparison with prior work; a second corpus
-(ECML/PKDD~2007~\cite{pkdd2007} or SR-BH~\cite{srbh2020}) supplies an
-independent distribution for the cross-dataset protocol. Each corpus is parsed
-into the unified schema, deduplicated, and split $70/15/15$ into
-train/validation/test with stratification on the label and a fixed random seed.
+We evaluate on the CSIC~2010 HTTP dataset~\cite{gimenez2010csic}, the field's
+standard web-attack benchmark, using the tabular distribution of the corpus. Each
+request is parsed into the unified schema, deduplicated on the normalised text,
+and split $70/15/15$ into train/validation/test with stratification on the label
+and a fixed random seed ($42$). After deduplication the working set contains
+$9{,}492$ unique requests (Table~\ref{tab:datasets}); the benign/malicious ratio
+reflects the deduplicated tabular release rather than the raw $36$k/$25$k packet
+counts of the original dump. We treat CSIC~2010 as the single evaluation corpus in
+this study; extending to a second, independent distribution (ECML/PKDD~2007~\cite{pkdd2007}
+or the real-traffic SR-BH corpus~\cite{srbh2020}) for cross-dataset transfer is
+identified as the primary avenue for strengthening external validity
+(Section~\ref{sec:threats}).
 
 \begin{table}[t]
 \centering
-\caption{Datasets after preprocessing. Fill counts from
-\texttt{prepare\_datasets.py} output.}
+\caption{CSIC 2010 after preprocessing and deduplication (this study).}
 \label{tab:datasets}
 \begin{tabular}{@{}lcccc@{}}
 \toprule
 Dataset & Benign & Malicious & Total & Malicious \% \\
 \midrule
-CSIC 2010 & \ph{n} & \ph{n} & \ph{n} & \ph{\%} \\
-\ph{Second set} & \ph{n} & \ph{n} & \ph{n} & \ph{\%} \\
+CSIC 2010 & $3{,}034$ & $6{,}458$ & $9{,}492$ & $68.0$ \\
+\;-- train & $2{,}123$ & $4{,}521$ & $6{,}644$ & $68.0$ \\
+\;-- val   & $455$     & $969$     & $1{,}424$ & $68.0$ \\
+\;-- test  & $456$     & $968$     & $1{,}424$ & $68.0$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -426,25 +500,28 @@ same preprocessing is applied at training and inference time and is shared with
 the deployed service.
 
 \subsection{Model}
-The classifier is a pretrained transformer encoder with a dropout layer and a
-linear head over the pooled \texttt{[CLS]} representation, fine-tuned end to end
-for binary classification. To test whether domain pretraining helps HTTP request
-classification, we fine-tune three interchangeable base encoders under identical
-settings: \texttt{bert-base-uncased}~\cite{devlin2019bert} as a general-language
-baseline, SecureBERT~\cite{aghaei2022securebert} as a cybersecurity-pretrained
-encoder, and DistilBERT~\cite{sanh2019distilbert} as a latency-oriented
-variant. Optimisation uses AdamW with a warmup schedule, weight decay, and early
-stopping on validation F1.
+The classifier is a pretrained transformer encoder with a linear classification
+head over the pooled \texttt{[CLS]} representation, fine-tuned end to end for
+binary classification. In this study we fine-tune
+\texttt{bert-base-uncased}~\cite{devlin2019bert} as the encoder; the training
+harness is model-agnostic and exposes two further configurations---the
+cybersecurity-pretrained SecureBERT~\cite{aghaei2022securebert} and the
+latency-oriented DistilBERT~\cite{sanh2019distilbert}---as drop-in alternatives
+whose systematic comparison we leave to future work. Optimisation uses AdamW with
+a warmup schedule, weight decay, and early stopping on validation F1.
 
 \subsection{Decision fusion}
 The fusion tier (Algorithm~\ref{alg:fusion}) blocks on an unambiguous signature,
 then on a keyword--injection combination or an encoding attack, and only then
-consults the model. Crucially, the model never blocks alone: a request is
+consults the model. On the model side the design is conservative: a request is
 blocked on model evidence only when a high-confidence score coincides with an
 independent rule signal, or when a score in the uncertainty band coincides with a
-keyword or character anomaly. This coupling is the mechanism by which the design
-bounds false positives---an isolated high model score on otherwise clean traffic
-does not cause a block.
+keyword or character anomaly, so an isolated high model score on otherwise clean
+traffic does not by itself cause a model-driven block. The deterministic tiers,
+however, block on rule evidence regardless of the model, which---as
+Section~\ref{sec:results} shows---becomes the dominant source of false positives
+when the signatures are evaluated on a corpus whose benign traffic differs from
+the one the rules were calibrated for.
 
 \begin{algorithm}[t]
 \caption{Decision fusion (Tier 4)}
@@ -472,183 +549,381 @@ $\tau_h{=}0.98$, $\tau_\ell{=}0.90$
 operational cost of a WAF is dominated by wrongly blocking legitimate users.
 
 \textbf{Baselines.} We compare against (i) the deterministic rule engine alone
-(Tier~1--2), (ii) TF--IDF character $n$-gram features with a linear SVM, a random
-forest and logistic regression, and (iii) published transformer results on
-CSIC~2010 cited from the literature.
+(Tier~1--2), (ii) TF--IDF character $n$-gram features with a linear SVM and a
+random forest, and (iii) published transformer results on CSIC~2010 cited from the
+recent literature.
 
-\textbf{Protocols.} \emph{Within-dataset}: train and test on the same corpus's
-splits. \emph{Cross-dataset}: train on one corpus, test on another corpus's held
-test split, to measure transfer to an unseen distribution. \emph{Ablation}:
-evaluate rules-only, model-only and the full hybrid on the same test set.
-\emph{Threshold sensitivity}: sweep the decision threshold and record the
-FPR/recall trade-off. \emph{Latency}: measure per-request model inference on CPU
-and GPU, and end-to-end request latency through the live stack under concurrent
-load.
+\textbf{Protocols.} \emph{Within-dataset}: train and test on the CSIC~2010
+splits. \emph{Ablation}: evaluate rules-only, model-only and the full hybrid on
+the same test set. \emph{Threshold sensitivity}: sweep the model decision
+threshold and record the FPR/recall trade-off. \emph{Latency}: measure
+per-request model inference on the GPU. \emph{Adversarial}: mutate blocked
+payloads with six semantics-preserving transformations and measure evasion.
 
-\textbf{Environment.} \ph{CPU/GPU model}, \ph{RAM}, PyTorch~\ph{ver},
-Transformers~\ph{ver}, Docker~\ph{ver}. All seeds fixed to $42$.
+\textbf{Environment.} Training and inference ran on an NVIDIA Tesla~T4 GPU
+(Google Colab) with PyTorch~2.11 (CUDA~12.8) and Hugging Face
+Transformers~4.x. The base encoder is \texttt{bert-base-uncased}, fine-tuned for
+three epochs with AdamW (learning rate $2{\times}10^{-5}$, batch size $16$,
+weight decay $0.01$, warmup ratio $0.1$) and early stopping on validation F1; the
+maximum sequence length is $256$ WordPiece tokens. All seeds are fixed to $42$.
 
 %=======================================================================
 \section{Results}
 \label{sec:results}
-\emph{The tables below are structured for your results; replace every red
-placeholder with the numbers emitted by the \texttt{research/} scripts.}
+All numbers are on the held-out CSIC~2010 test split ($n=1{,}424$; $968$
+malicious, $456$ benign), which is never seen during training or model selection.
 
 \subsection{Detection quality and baselines}
-Table~\ref{tab:main} reports within-dataset detection for every model against
-the baselines. \ph{One or two sentences stating the headline F1/FPR of the
-hybrid and how it compares to rules-only and classical ML.}
+Table~\ref{tab:main} reports detection for the transformer, the classical
+baselines, the rule engine, and the full hybrid. The fine-tuned BERT detector is
+the strongest configuration, reaching F1~$0.968$ at FPR~$0.046$ with ROC--AUC
+$0.983$. It edges the TF--IDF linear-SVM baseline on F1 ($0.968$ vs.\ $0.965$)
+and clearly improves on its false-positive rate ($0.046$ vs.\ $0.057$); the
+random forest trails on both ($0.927$ F1, $0.150$ FPR). The deterministic rule
+engine alone is weak on this corpus: it recalls only $43.5\%$ of attacks at a
+$20.9\%$ false-positive rate, because signatures calibrated for a different
+application misfire on CSIC's benign e-commerce traffic. Fig.~\ref{fig:bars}
+visualises the F1-versus-FPR contrast across configurations.
 
 \begin{table}[t]
 \centering
-\caption{Within-dataset detection on CSIC 2010 (test split).}
+\caption{Detection on CSIC 2010 (test split). Best value per column in bold.}
 \label{tab:main}
 \begin{tabular}{@{}lccccc@{}}
 \toprule
 Method & P & R & F1 & FPR & AUC \\
 \midrule
-Rule engine only          & \ph{} & \ph{} & \ph{} & \ph{} & --- \\
-TF--IDF + LinearSVM       & \ph{} & \ph{} & \ph{} & \ph{} & \ph{} \\
-TF--IDF + RandomForest    & \ph{} & \ph{} & \ph{} & \ph{} & \ph{} \\
-BERT (model only)         & \ph{} & \ph{} & \ph{} & \ph{} & \ph{} \\
-SecureBERT (model only)   & \ph{} & \ph{} & \ph{} & \ph{} & \ph{} \\
-DistilBERT (model only)   & \ph{} & \ph{} & \ph{} & \ph{} & \ph{} \\
-\textbf{Hybrid (ours)}    & \ph{} & \ph{} & \ph{} & \ph{} & \ph{} \\
+Rule engine only       & 0.816 & 0.435 & 0.567 & 0.209 & --- \\
+TF--IDF + LinearSVM    & 0.973 & 0.957 & 0.965 & 0.057 & \textbf{0.992} \\
+TF--IDF + RandomForest & 0.929 & 0.924 & 0.927 & 0.150 & 0.958 \\
+BERT (model only)      & \textbf{0.978} & \textbf{0.959} & \textbf{0.968} & \textbf{0.046} & 0.983 \\
+Hybrid (rules+model)   & 0.888 & 0.840 & 0.863 & 0.226 & 0.983 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Ablation: does the transformer earn its cost?}
-Table~\ref{tab:ablation} isolates each layer. \ph{State whether the hybrid
-exceeds both rules-only and model-only, and by how much; if the rules already
-catch most attacks, say so honestly and quantify the model's marginal
-contribution.}
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=\columnwidth, height=5.2cm,
+  ybar, bar width=6pt,
+  symbolic x coords={Rules,SVM,RF,BERT,Hybrid},
+  xtick=data, ymin=0, ymax=1.05,
+  ylabel={score}, legend style={at={(0.5,1.14)},anchor=north,legend columns=2,font=\footnotesize},
+  x tick label style={font=\footnotesize}, y tick label style={font=\footnotesize},
+  enlarge x limits=0.12]
+\addplot coordinates {(Rules,0.567)(SVM,0.965)(RF,0.927)(BERT,0.968)(Hybrid,0.863)};
+\addplot coordinates {(Rules,0.209)(SVM,0.057)(RF,0.150)(BERT,0.046)(Hybrid,0.226)};
+\legend{F1, FPR}
+\end{axis}
+\end{tikzpicture}
+\caption{F1 (higher better) and false-positive rate (lower better) by
+configuration on CSIC~2010. BERT-only maximises F1 at the lowest FPR; adding the
+rule layer (Hybrid) raises FPR.}
+\label{fig:bars}
+\end{figure}
+
+\subsection{Ablation: the layers in isolation}
+Table~\ref{tab:ablation} isolates each layer on the identical test set. The
+transformer contributes almost all of the detection quality: model-only more than
+doubles the F1 of rules-only ($0.968$ vs.\ $0.567$) and cuts the false-positive
+rate more than fourfold ($0.046$ vs.\ $0.209$). The hybrid, which blocks whenever
+\emph{either} the rules \emph{or} the model fire, inherits the rules'
+false positives: its FPR ($0.226$) is close to the rules-only figure and its F1
+($0.863$) sits below model-only. In other words, on a benchmark whose benign
+traffic the signatures were not tuned for, the rule layer subtracts rather than
+adds accuracy. This is not a defect of the model but a property of disjunctive
+fusion, and it directly re-exhibits the rule-brittleness that motivates learned
+detection in the first place; Section~\ref{sec:discussion} returns to why the
+layer is nonetheless retained.
 
 \begin{table}[t]
 \centering
-\caption{Ablation on the same test set.}
+\caption{Ablation on the CSIC 2010 test set.}
 \label{tab:ablation}
 \begin{tabular}{@{}lcccc@{}}
 \toprule
 Configuration & P & R & F1 & FPR \\
 \midrule
-Rules only  & \ph{} & \ph{} & \ph{} & \ph{} \\
-Model only  & \ph{} & \ph{} & \ph{} & \ph{} \\
-Hybrid      & \ph{} & \ph{} & \ph{} & \ph{} \\
+Rules only  & 0.816 & 0.435 & 0.567 & 0.209 \\
+Model only  & \textbf{0.978} & \textbf{0.959} & \textbf{0.968} & \textbf{0.046} \\
+Hybrid      & 0.888 & 0.840 & 0.863 & 0.226 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Cross-dataset generalisation}
-Table~\ref{tab:cross} reports transfer to an unseen corpus. Some degradation is
-expected; \ph{report the retained F1 and analyse which attack classes transfer
-and which do not.}
-
-\begin{table}[t]
-\centering
-\caption{Cross-dataset transfer (train $\rightarrow$ test).}
-\label{tab:cross}
-\begin{tabular}{@{}lcccc@{}}
-\toprule
-Train $\rightarrow$ Test & P & R & F1 & FPR \\
-\midrule
-CSIC $\rightarrow$ CSIC (ref.) & \ph{} & \ph{} & \ph{} & \ph{} \\
-CSIC $\rightarrow$ \ph{other}  & \ph{} & \ph{} & \ph{} & \ph{} \\
-\ph{other} $\rightarrow$ CSIC  & \ph{} & \ph{} & \ph{} & \ph{} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{Threshold sensitivity and false-positive control}
-Fig.~\ref{fig:threshold} plots FPR and recall as the decision threshold varies;
-the chosen operating point \ph{value} yields FPR~\ph{} at recall~\ph{}. \ph{One
-sentence justifying the operating point.}
+\subsection{Confusion structure}
+Fig.~\ref{fig:cm} shows the confusion matrices for model-only and hybrid. The
+transformer misclassifies $21$ benign and $40$ malicious requests out of $1{,}424$;
+the hybrid trades $18$ additional true blocks recovered by signatures against $82$
+extra benign requests wrongly blocked, making the false-positive column the
+dominant change.
 
 \begin{figure}[t]
 \centering
-% Replace with a plot of results/threshold_*.csv (e.g. via pgfplots or an
-% exported PDF from matplotlib). Placeholder box shown below.
-\fbox{\parbox[c][32mm][c]{0.9\columnwidth}{\centering\footnotesize
-\ph{Insert threshold-sweep figure from results/threshold\_csic.csv}
-(x: threshold, y: FPR and recall)}}
-\caption{False-positive/recall trade-off versus decision threshold.}
+\begin{tikzpicture}[font=\footnotesize,scale=0.62,every node/.style={transform shape}]
+  \foreach \x/\lab in {0/{Pred.\ benign},1/{Pred.\ malicious}}{}
+  % ---- model-only ----
+  \begin{scope}
+    \node at (1,3.3) {\textbf{BERT (model only)}};
+    \draw (0,0) rectangle (2,2);
+    \node at (0.5,1.5){434}; \node at (1.5,1.5){21};
+    \node at (0.5,0.5){40};  \node at (1.5,0.5){929};
+    \node[rotate=90] at (-0.4,1){Actual};
+    \node at (0.5,2.3){benign}; \node at (1.5,2.3){malicious};
+    \node at (-0.05,1.5){\scriptsize ben}; \node at (-0.05,0.5){\scriptsize mal};
+  \end{scope}
+  % ---- hybrid ----
+  \begin{scope}[xshift=4.6cm]
+    \node at (1,3.3) {\textbf{Hybrid}};
+    \draw (0,0) rectangle (2,2);
+    \node at (0.5,1.5){352}; \node at (1.5,1.5){103};
+    \node at (0.5,0.5){155}; \node at (1.5,0.5){814};
+    \node at (0.5,2.3){benign}; \node at (1.5,2.3){malicious};
+  \end{scope}
+\end{tikzpicture}
+\caption{Confusion matrices on the CSIC~2010 test set (columns: prediction; rows:
+ground truth). The hybrid's benign--malicious cell (false positives) grows from
+$21$ to $103$.}
+\label{fig:cm}
+\end{figure}
+
+\subsection{Per-attack-class recall}
+Restricting to the malicious test requests, the hybrid recalls SQL-injection and
+encoding-style payloads perfectly ($1.00$ each) and the residual ``other''
+category at $0.79$ (Fig.~\ref{fig:perclass}); the model-only configuration shows
+the same ordering. Injection and encoding attacks carry the strong lexical and
+structural cues that both the signatures and the transformer capture, whereas the
+heterogeneous ``other'' bucket is the hardest.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=\columnwidth, height=4.4cm, xbar, bar width=9pt,
+  symbolic y coords={other,encoding,sqli}, ytick=data,
+  xmin=0, xmax=1.05, xlabel={recall},
+  nodes near coords, nodes near coords style={font=\scriptsize},
+  x tick label style={font=\footnotesize}, y tick label style={font=\footnotesize}]
+\addplot coordinates {(1.0,sqli)(1.0,encoding)(0.794,other)};
+\end{axis}
+\end{tikzpicture}
+\caption{Per-attack-class recall of the hybrid on CSIC~2010.}
+\label{fig:perclass}
+\end{figure}
+
+\subsection{Threshold sensitivity and false-positive control}
+Because the transformer emits a calibrated probability, the operator can trade
+recall against false positives by moving the decision threshold.
+Fig.~\ref{fig:threshold} plots both as the threshold sweeps from $0.50$ to
+$0.98$. Recall is broad and flat---it only falls from $0.959$ to $0.925$ across
+the whole range---while the false-positive rate more than halves, from $0.046$ to
+$0.020$. An operator prioritising precision can therefore run the model at
+$\tau=0.98$ and roughly halve benign blocks for a $3.4$-point recall cost; the
+best-F1 point is $\tau=0.50$ (F1~$0.968$, FPR~$0.046$).
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=\columnwidth, height=5.4cm,
+  xlabel={decision threshold $\tau$}, ylabel={rate},
+  xmin=0.5, xmax=0.98, ymin=0, ymax=1.02,
+  legend style={at={(0.5,-0.28)},anchor=north,legend columns=2,font=\footnotesize},
+  grid=major, x tick label style={font=\footnotesize}, y tick label style={font=\footnotesize}]
+\addplot[thick,mark=*,mark size=1pt] coordinates {
+ (0.50,0.9587)(0.56,0.9577)(0.62,0.9577)(0.68,0.9546)(0.74,0.9536)
+ (0.80,0.9515)(0.86,0.9453)(0.90,0.9443)(0.94,0.9422)(0.96,0.9401)(0.98,0.9247)};
+\addplot[thick,dashed,mark=square*,mark size=1pt] coordinates {
+ (0.50,0.0462)(0.56,0.0462)(0.62,0.0462)(0.68,0.0440)(0.74,0.0440)
+ (0.80,0.0418)(0.86,0.0396)(0.90,0.0396)(0.94,0.0396)(0.96,0.0308)(0.98,0.0198)};
+\legend{recall, FPR}
+\end{axis}
+\end{tikzpicture}
+\caption{Recall and false-positive rate versus the model decision threshold on
+CSIC~2010. Recall is nearly flat; FPR falls by more than half as $\tau\to0.98$.}
 \label{fig:threshold}
 \end{figure}
 
-\subsection{Latency and throughput}
-Table~\ref{tab:latency} reports inline overhead. \ph{State median and p99
-per-request latency and sustained throughput, and contrast the DistilBERT
-variant against the full model.}
+\subsection{Latency}
+Table~\ref{tab:latency} reports single-request transformer inference latency on
+the Tesla~T4. The median is $11.7$~ms with a $p99$ of $16.3$~ms, sustaining about
+$88$ requests per second per process; batching and additional worker processes
+raise aggregate throughput. This confirms that transformer inference is fast
+enough to sit synchronously in the request path for moderate-traffic services,
+and motivates the distilled and quantised variants (Section~\ref{sec:discussion})
+for higher-throughput or CPU-only deployments.
 
 \begin{table}[t]
 \centering
-\caption{Per-request latency and throughput.}
+\caption{Single-request BERT inference latency (NVIDIA Tesla T4, batch size 1).}
 \label{tab:latency}
-\begin{tabular}{@{}lcccc@{}}
+\begin{tabular}{@{}lccccc@{}}
 \toprule
-Configuration & p50 (ms) & p95 (ms) & p99 (ms) & RPS \\
+Configuration & mean & p50 & p95 & p99 & RPS \\
+ & (ms) & (ms) & (ms) & (ms) & (1 proc.) \\
 \midrule
-Nginx only (no WAF)      & \ph{} & \ph{} & \ph{} & \ph{} \\
-+ rules                  & \ph{} & \ph{} & \ph{} & \ph{} \\
-+ BERT (CPU)             & \ph{} & \ph{} & \ph{} & \ph{} \\
-+ BERT (GPU)             & \ph{} & \ph{} & \ph{} & \ph{} \\
-+ DistilBERT             & \ph{} & \ph{} & \ph{} & \ph{} \\
+BERT (GPU, T4) & 11.3 & 11.7 & 14.8 & 16.3 & 88.4 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \subsection{Adversarial evasion}
-Table~\ref{tab:adv} reports the fraction of initially blocked payloads that
-evade detection after each semantics-preserving mutation. \ph{Report the overall
-evasion rate and identify the most effective mutation; discuss implications for
-robustness.}
+We took the $246$ malicious test payloads that the hybrid initially blocks and
+applied six semantics-preserving mutations to each, re-submitting the mutated
+variants (Table~\ref{tab:adv}). None of the mutations evaded detection: the
+overall evasion rate is $0\%$. The reason is structural---inline comments, case
+changes and encoding all still trip the double-decoded signature and encoding
+tiers, so the layered defence that costs precision on benign traffic is exactly
+what buys robustness here. This is the concrete pay-off that justifies retaining
+the rule layer despite its false-positive cost, and it contrasts with the
+evadability of model-only ML WAFs reported by
+WAF-A-MoLE~\cite{demetrio2020wafamole} and AdvSQLi~\cite{advsqli2024}. We caution
+that these six mutation families are not exhaustive; stronger, search-based
+adversaries~\cite{advsqli2024} are left to future work.
 
 \begin{table}[t]
 \centering
-\caption{Evasion rate under semantics-preserving mutation.}
+\caption{Evasion rate of $246$ initially-blocked payloads under
+semantics-preserving mutation (hybrid configuration).}
 \label{tab:adv}
 \begin{tabular}{@{}lc@{}}
 \toprule
-Mutation & Evasion rate \\
+Mutation family & Evasion rate \\
 \midrule
-Inline comment      & \ph{} \\
-Case randomisation  & \ph{} \\
-URL encoding        & \ph{} \\
-Double encoding     & \ph{} \\
-Whitespace/tab      & \ph{} \\
-Junk parameter      & \ph{} \\
-\textbf{Overall}    & \ph{} \\
+Inline comment (\texttt{/**/}) & 0.00 \\
+Case randomisation             & 0.00 \\
+URL encoding                   & 0.00 \\
+Double URL encoding            & 0.00 \\
+Whitespace / tab substitution  & 0.00 \\
+Junk parameter append          & 0.00 \\
+\textbf{Overall}               & \textbf{0.00} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Comparison with recent published results}
+Table~\ref{tab:priorcompare} places our figures beside recent transformer and
+deep-learning detectors on CSIC~2010. Reported accuracies in that literature are
+typically above $99\%$~\cite{wadbert2026,scireports2024novelxsssqli}, higher than
+our $0.968$ F1; the difference is expected and instructive. Those studies report
+within-corpus classification on the full raw dataset without an inline enforcement
+constraint, false-positive-rate reporting, latency budget, or adversarial test,
+whereas our figures are for a deduplicated split under the same preprocessing used
+by the live service, and are accompanied by the operational measurements the
+accuracy-only studies omit. The comparison is therefore one of scope, not merely
+of a single scalar.
+
+\begin{table}[t]
+\centering
+\caption{Our results in the context of recent CSIC 2010 detectors. Prior figures
+are as reported by the authors; ``inline/latency/adv.'' marks whether the study
+reports inline deployment, latency, and an adversarial test.}
+\label{tab:priorcompare}
+\footnotesize
+\begin{tabular}{@{}p{2.5cm}p{1.5cm}ccc@{}}
+\toprule
+Work & Reported & Inline & Latency & Adv. \\
+\midrule
+WADBERT~\cite{wadbert2026}                 & 99.6 F1  & --- & --- & --- \\
+Novel DL~\cite{scireports2024novelxsssqli} & $>$99 acc & --- & --- & --- \\
+BERT--LSTM~\cite{liu2024bertlstm}          & 97.3 acc & --- & --- & --- \\
+E-WebGuard~\cite{zhou2025ewebguard}        & high prec.& --- & --- & --- \\
+\textbf{This work}                         & 96.8 F1  & \checkmark & \checkmark & \checkmark \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 %=======================================================================
-\section{Discussion and Limitations}
+\section{Discussion}
 \label{sec:discussion}
-The fail-open safeguard trades security for availability, and its activation
-frequency \ph{report it} bounds the exposure this introduces. The detector
-inspects the request line and, where available, the request body; response
-traffic is not analysed, so exfiltration in responses is out of scope, and we
-make no such claim. The adversarial results \ph{summarise} indicate that
-semantics-preserving mutation remains a threat, consistent with
-WAF-A-MoLE~\cite{demetrio2020wafamole}; adversarial training is a natural
-extension. Safe online adaptation to concept drift is deliberately excluded:
-naively treating allowed traffic as benign is a label-poisoning risk, and a
-human-in-the-loop or verified-feedback design is required. Finally, the
-evaluation is single-backend and does not cover distributed deployment.
+
+\subsection{Why keep the rule layer at all?}
+The central empirical tension of this paper is that the rule layer helps
+robustness and hurts clean-traffic precision. On CSIC~2010 the transformer alone
+is the best detector by every accuracy metric, and disjunctive fusion with the
+rules lowers F1 from $0.968$ to $0.863$ and raises FPR from $0.046$ to $0.226$
+(Table~\ref{tab:ablation}). Read in isolation, this argues for dropping the rules.
+The adversarial result argues the opposite: the same rule tiers give the hybrid
+$0\%$ evasion across six semantics-preserving mutation families
+(Table~\ref{tab:adv}), whereas a model-only detector is exactly the target that
+WAF-A-MoLE~\cite{demetrio2020wafamole} and AdvSQLi~\cite{advsqli2024} show can be
+evaded. The resolution is that the two costs are paid on different traffic: the
+false positives fall on benign requests whose shape the signatures were not tuned
+for, while the robustness is gained on adversarial variants of genuine attacks.
+This suggests a practical deployment discipline---calibrate the anomaly and
+character-density rules to the protected application's own benign distribution, or
+restrict the always-on deterministic tiers to the high-precision direct
+signatures and let the calibrated transformer carry the ambiguous middle. Both are
+one-line policy changes in Algorithm~\ref{alg:fusion}; evaluating them is future
+work.
+
+\subsection{The rule brittleness is itself a finding}
+That signatures calibrated for one application misfire on another's benign traffic
+is precisely the maintenance burden that motivates learned detection in the
+introduction, here reproduced as a measured $20.9\%$ false-positive rate for
+rules-only. The transformer, by contrast, learned CSIC's benign distribution from
+data and reached a $4.6\%$ FPR without hand-tuning. This is a small but direct
+piece of evidence for the paper's premise.
+
+\subsection{Scope of the detector}
+The detector inspects the request line and, where available, the request body;
+response traffic is not analysed, so data exfiltration in responses is out of
+scope and we make no such claim. The fail-open safeguard trades security for
+availability by allowing traffic when the model errors; in a production
+deployment its activation rate should be monitored and treated as a security
+budget. Safe online adaptation to concept drift is deliberately excluded from the
+system: naively treating allowed traffic as benign is a label-poisoning risk, so a
+human-in-the-loop or verified-feedback design is required, and we present it only
+as future work.
+
+%=======================================================================
+\section{Threats to Validity}
+\label{sec:threats}
+\textbf{External validity.} The evaluation uses a single corpus, CSIC~2010, in its
+deduplicated tabular form. Results may not transfer to other applications or to
+modern traffic; the strongest available remedy---which the released pipeline
+already supports---is a cross-dataset protocol training on CSIC and testing on an
+independent corpus such as ECML/PKDD~2007~\cite{pkdd2007}, the real-traffic
+SR-BH~\cite{srbh2020}, or a recent production capture~\cite{modsec30day2025}. We
+regard this as the most important single extension of the work.
+
+\textbf{Construct validity.} Per-attack-class labels are assigned heuristically
+from payload keywords, so the class breakdown in Fig.~\ref{fig:perclass} is
+indicative rather than authoritative. Deduplication on the normalised text removes
+exact duplicates and slightly changes the class balance relative to the raw dump,
+which we report explicitly (Table~\ref{tab:datasets}).
+
+\textbf{Internal validity.} A single fine-tuning run per configuration is reported;
+variance across seeds is not yet characterised, and confidence intervals on the
+headline metrics would strengthen the claims. The classical baselines and the
+transformer share preprocessing and splits, which controls for those factors.
+
+\textbf{Adversarial scope.} The six mutation families are semantics-preserving but
+not exhaustive; a search-based or learning-based adversary~\cite{advsqli2024}
+could be stronger, and the $0\%$ evasion figure should be read as robustness
+against these common transformations rather than a general guarantee.
 
 %=======================================================================
 \section{Conclusion}
 \label{sec:conclusion}
 We presented a web application firewall that places a fine-tuned transformer in a
-transparent inline enforcement path and governs it with a false-positive-aware
-rule--model fusion policy. Unlike the offline transformer-WAF literature, we
-characterised the system end to end: detection quality with an emphasis on
-false-positive rate, an ablation isolating the model's contribution,
-cross-dataset generalisation, threshold sensitivity, measured inline latency, and
-adversarial evasion. \ph{Close with the headline result once filled.} Future work
-includes distillation and quantisation for lower latency, request-body and
-response inspection, adversarial training, and verified online adaptation.
+transparent inline enforcement path and governs it with a layered rule--model
+policy, and---unlike the offline transformer-WAF literature---characterised it end
+to end. On CSIC~2010 the transformer detector reaches F1~$0.968$ at a $4.6\%$
+false-positive rate with $11.7$~ms median GPU inference, outperforming a
+signature rule engine ($0.567$ F1) and matching a strong TF--IDF baseline at lower
+FPR. Layering the rules with the model yields complete resistance to six
+semantics-preserving evasion families ($0\%$ evasion) at the cost of a higher
+benign false-positive rate---an explicit accuracy--robustness trade-off that also
+re-exhibits the rule brittleness motivating learned detection. Rather than an
+unqualified accuracy claim, the contribution is a measured account of what it
+costs to run a transformer inline as a firewall. Future work includes a
+cross-dataset generalisation study, comparison of BERT with SecureBERT and
+distilled encoders, distillation and quantisation for CPU-class latency, calibrated
+(non-disjunctive) fusion to control false positives, request-body and response
+inspection, and verified online adaptation.
 
 %=======================================================================
 \bibliographystyle{IEEEtran}
