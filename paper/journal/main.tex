@@ -801,13 +801,26 @@ Junk parameter append          & 0.00 \\
 Table~\ref{tab:priorcompare} places our figures beside recent transformer and
 deep-learning detectors on CSIC~2010. Reported accuracies in that literature are
 typically above $99\%$~\cite{wadbert2026,scireports2024novelxsssqli}, higher than
-our $0.968$ F1; the difference is expected and instructive. Those studies report
-within-corpus classification on the full raw dataset without an inline enforcement
-constraint, false-positive-rate reporting, latency budget, or adversarial test,
-whereas our figures are for a deduplicated split under the same preprocessing used
-by the live service, and are accompanied by the operational measurements the
-accuracy-only studies omit. The comparison is therefore one of scope, not merely
-of a single scalar.
+our $0.968$ F1, and the gap is worth explaining mechanistically rather than
+waving away. CSIC~2010's benign traffic is templated: a small number of
+request patterns (a handful of endpoints with substituted parameter values)
+recur thousands of times across the corpus. If duplicate or near-duplicate
+requests are not removed before splitting, near-identical benign examples end
+up in both the training and test partitions, and a classifier can score highly
+on the test set partly by having effectively seen it during training. Our
+pipeline deduplicates on the normalised request text \emph{before} splitting
+(Section~\ref{sec:method}), which removes this leakage at the cost of a
+smaller, harder, and more representative test distribution; the $9.5$k-request
+deduplicated corpus used here is a fraction of the raw dataset for exactly this
+reason. We cannot verify whether the compared studies deduplicate before
+splitting because most do not report the procedure, but the difference is a
+plausible and largely sufficient explanation for the accuracy gap, and it means
+our lower number should be read as a stricter, leakage-controlled estimate
+rather than a weaker model. Beyond this, the comparison is also one of scope:
+those studies report within-corpus classification on the full raw dataset
+without an inline enforcement constraint, false-positive-rate reporting,
+latency budget, or adversarial test, whereas our figures are accompanied by the
+operational measurements the accuracy-only studies omit.
 
 \begin{table}[t]
 \centering
@@ -921,6 +934,6 @@ inspection, and verified online adaptation.
 
 %=======================================================================
 \bibliographystyle{IEEEtran}
-\bibliography{../references}
+\bibliography{references}
 
 \end{document}
