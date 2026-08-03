@@ -71,7 +71,7 @@ dominate the OWASP Top Ten, and WAFs are the standard mitigation. Production WAF
 rely on signatures and regular expressions~\cite{owaspcrs}: fast and auditable
 but matching syntax, not intent, so encoded or comment-laden payloads evade them
 while tighter rules raise false positives. Transformer language
-models~\cite{vaswani2017attention,devlin2019bert} promise to model payload
+models promise to model payload
 structure directly, and a large literature reports $>$99\% accuracy on
 CSIC~2010~\cite{wadbert2026,liu2024bertlstm}. That work, however, stops at
 offline classification: it does not place the model in an enforcement path,
@@ -86,19 +86,18 @@ results.
 A recent survey situates transformers and LLMs for intrusion
 detection~\cite{kheddar2025survey}. Rule sets such as OWASP CRS~\cite{owaspcrs}
 are the practical baseline but match surface strings; classical ML on
-CSIC~2010~\cite{gimenez2010csic,payloadml2024svmrfxgb} depends on handcrafted
+CSIC~2010~\cite{payloadml2024svmrfxgb} depends on handcrafted
 features. Recent deep and transformer detectors report $>$99\% within-corpus
 accuracy for SQLi/XSS~\cite{scireports2024novelxsssqli,liu2024bertlstm,wadbert2026},
 with enhanced neural architectures~\cite{zhou2025ewebguard} and BERT applied to
 intrusion detection~\cite{yang2025bertids,sdnbert2024}; domain encoders such as
-SecureBERT~\cite{aghaei2022securebert} and compressed models such as
-DistilBERT~\cite{sanh2019distilbert} and TinyBERT~\cite{jiao2020tinybert} address
-cost. Adversarial evasion remains open: beyond
-WAF-A-MoLE~\cite{demetrio2020wafamole}, recent work crafts adversarial SQL
-injections against real-world WAFs~\cite{advsqli2024}, yet transformer-WAF papers
-rarely test evasion. Across this work, inline deployment, latency, false-positive
-control and cross-dataset generalisation are addressed rarely and never
-jointly---the gap we close (Table~\ref{tab:survey}).
+SecureBERT~\cite{aghaei2025securebert2} and compressed encoder variants address
+inference cost. Adversarial evasion remains open: recent work crafts adversarial
+SQL injections against real-world WAFs~\cite{advsqli2024} and uses reinforcement
+learning to craft evasive payloads~\cite{mlwaf2025peerj}, yet transformer-WAF
+papers rarely test evasion. Across this work, inline deployment, latency,
+false-positive control and cross-dataset generalisation are addressed rarely and
+never jointly---the gap we close (Table~\ref{tab:survey}).
 
 \begin{table}[t]
 \centering
@@ -170,11 +169,11 @@ endpoints are checked only at Tier~1, and unhandled errors fail open.
 \section{Methodology and Setup}
 Detection is binary classification of $x=\texttt{METHOD}\,\Vert\,\texttt{URI}'$.
 Requests are double URL-decoded, digit runs masked, and tokenised (WordPiece,
-max 256). We fine-tune \texttt{bert-base-uncased}~\cite{devlin2019bert} with AdamW
+max 256). We fine-tune \texttt{bert-base-uncased} with AdamW
 (lr $2{\times}10^{-5}$, batch 16, three epochs, early stopping on validation F1);
-the harness also supports SecureBERT~\cite{aghaei2022securebert} and
-DistilBERT~\cite{sanh2019distilbert} as drop-in encoders for future comparison.
-Data: the CSIC~2010 tabular corpus~\cite{gimenez2010csic}, deduplicated to
+the harness also supports SecureBERT~\cite{aghaei2025securebert2} and
+DistilBERT as drop-in encoders for future comparison.
+Data: the CSIC~2010 tabular corpus, deduplicated to
 $9{,}492$ requests ($68\%$ malicious) and split $70/15/15$ stratified (seed 42),
 giving a $1{,}424$-request test set. We report precision, recall, F1, FPR and
 ROC--AUC, emphasising FPR; baselines are the rule engine alone and TF--IDF
@@ -239,7 +238,7 @@ process), fast enough for inline use. Finally, all six semantics-preserving
 mutations applied to the $246$ initially blocked payloads failed to evade the
 hybrid ($0\%$ evasion, Table~\ref{tab:latency})---the layered defence that costs
 precision on benign traffic is exactly what buys robustness against the evasions
-that defeat model-only ML WAFs~\cite{demetrio2020wafamole,advsqli2024}.
+that defeat model-only ML WAFs~\cite{advsqli2024}.
 
 \begin{figure}[t]
 \centering

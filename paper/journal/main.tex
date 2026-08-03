@@ -101,12 +101,12 @@ request shapes makes this tuning burden acute.
 
 Learning-based detection promises to close this gap by modelling the structure
 of malicious payloads rather than enumerating their spellings. Transformer
-language models~\cite{vaswani2017attention,devlin2019bert} are a natural fit:
+language models are a natural fit:
 treating an HTTP request as a token sequence lets a fine-tuned encoder capture
 the contextual regularities that distinguish an injection attempt from an
 ordinary parameter value. A substantial recent literature does exactly this and
 reports accuracies above 99\% on the standard CSIC~2010
-benchmark~\cite{wadbert2026,liu2024bertlstm,scireports2023xsssqli}.
+benchmark~\cite{wadbert2026,liu2024bertlstm}.
 
 Yet a gap separates these results from a firewall a practitioner can deploy.
 Almost all of this work stops at offline classification: a model is trained and
@@ -184,7 +184,7 @@ first tier in a layered system, but an insufficient detector on their own.
 A second line of work extracts features---$n$-grams, term-frequency vectors,
 handcrafted lexical statistics---from HTTP requests and applies classifiers such
 as support vector machines and random forests, most often on
-CSIC~2010~\cite{gimenez2010csic}. Recent studies continue this approach: web
+CSIC~2010. Recent studies continue this approach: web
 payloads are classified into SQL injection, XSS and command injection with SVM,
 random-forest and XGBoost models~\cite{payloadml2024svmrfxgb}, and enhanced
 neural architectures have been proposed for precision web attack
@@ -201,43 +201,37 @@ applications against XSS and SQLi with accuracies above 99\% on CSIC~2010 and
 payload testbeds~\cite{scireports2024novelxsssqli}, command-injection detectors
 reach comparable figures~\cite{scireports2024cmdi}, and ensembles of LSTM, GRU
 and stacked autoencoders target so-called zero-day web
-attacks~\cite{zeroday2025ensemble}. On the transformer side, BERT and its
-relatives~\cite{devlin2019bert,liu2019roberta} have been fine-tuned for SQL
-injection detection through a BERT--LSTM hybrid~\cite{liu2024bertlstm} and for
-dual-channel web attack detection~\cite{wadbert2026}; BERT has been applied to
-intrusion detection more broadly~\cite{yang2025bertids}, to unseen-attack
-detection in software-defined networks~\cite{sdnbert2024}, and to web-server log
-classification via transfer learning~\cite{prasetyo2025webserver}. Domain-adapted
-encoders such as SecureBERT~\cite{aghaei2022securebert,aghaei2025securebert2}
-pretrain on cybersecurity text and could, in principle, improve request
-classification, though they have not been evaluated in that role, and
-self-supervised HTTP embeddings have also been
-proposed~\cite{http2vec2021}. The recurring limitation across this group is that
+attacks~\cite{zeroday2025ensemble}. On the transformer side, BERT-family encoders
+have been fine-tuned for SQL injection detection through a BERT--LSTM
+hybrid~\cite{liu2024bertlstm} and for dual-channel web attack
+detection~\cite{wadbert2026}; BERT has been applied to intrusion detection more
+broadly~\cite{yang2025bertids}, to unseen-attack detection in software-defined
+networks~\cite{sdnbert2024}, and to web-server log classification via transfer
+learning~\cite{prasetyo2025webserver}. Domain-adapted encoders such as
+SecureBERT~\cite{aghaei2025securebert2} pretrain on cybersecurity text and could,
+in principle, improve request classification, though they have not been
+evaluated in that role. The recurring limitation across this group is that
 evaluation is offline: the model is not placed in an enforcement path, latency is
-not reported, and false-positive behaviour at an operating point is not analysed.
-Log-anomaly detectors such as LogBERT~\cite{guo2021logbert} share the
-sequence-modelling idea in an adjacent setting.
+not reported, and false-positive behaviour at an operating point is not
+analysed.
 
 \subsection{Compression, latency, datasets and adversarial evasion}
 Because transformer inference is costly, a compression literature distils and
-prunes these models: DistilBERT~\cite{sanh2019distilbert} and
-TinyBERT~\cite{jiao2020tinybert} retain most accuracy at a fraction of the
-size, and lightweight, quantised or distilled variants have been applied to
-real-time intrusion detection~\cite{distilxids2025,lightweightedge2026}. On the
-data side, CSIC~2010~\cite{gimenez2010csic} is the field's default benchmark but
-is synthetic and dated; the ECML/PKDD~2007 challenge~\cite{pkdd2007} and the more
-recent, real-traffic SR-BH multi-label corpus~\cite{srbh2020} enable the
-cross-dataset evaluation that within-corpus studies omit, and newer collections
-such as a thirty-day capture of malicious requests blocked by production
-ModSecurity~\cite{modsec30day2025} address the shortage of up-to-date web-attack
-data. Finally, adversarial evasion is an active and worsening threat:
-WAF-A-MoLE~\cite{demetrio2020wafamole} first showed machine-learning WAFs can be
-evaded by mutating payloads, and recent work generates adversarial SQL injections
+prunes these models, and lightweight, quantised or distilled variants have been
+applied to real-time intrusion detection with reported gains in latency and
+model size~\cite{distilxids2025,lightweightedge2026}. On the data side,
+CSIC~2010 is the field's default benchmark but is synthetic and dated; newer
+collections such as a thirty-day capture of malicious requests blocked by
+production ModSecurity~\cite{modsec30day2025} begin to address the shortage of
+up-to-date, real-traffic web-attack data and motivate the cross-dataset
+evaluation that within-corpus studies omit. Finally, adversarial evasion is an
+active and worsening threat: recent work generates adversarial SQL injections
 against commercial WAF-as-a-service~\cite{advsqli2024} and uses reinforcement
 learning with pretrained language models to craft evasive
-payloads~\cite{mlwaf2025peerj}. Transformer-WAF papers nonetheless seldom test
-evasion, and explainability work on intrusion detection~\cite{xai_ids_2025} is
-likewise rarely integrated into WAF decisions.
+payloads~\cite{mlwaf2025peerj}, continuing an established line showing that
+machine-learning WAFs can be evaded by mutating payloads. Transformer-WAF papers
+nonetheless seldom test evasion, and explainability work on intrusion
+detection~\cite{xai_ids_2025} is likewise rarely integrated into WAF decisions.
 
 \subsection{Research gap}
 Across these themes the pattern is consistent: transformer detectors are
@@ -276,7 +270,7 @@ Zero-day ensemble~\cite{zeroday2025ensemble} & 2025 & LSTM+GRU+autoencoders & We
 Payload ML~\cite{payloadml2024svmrfxgb} & 2024 & SVM/RF/XGBoost & SQLi/XSS/cmd payloads & Handcrafted features; offline \\
 DistilXIDS~\cite{distilxids2025} & 2025 & Distilled transformer, explainable & NIDS sets; $>$99\% F1, low latency & Network flows, not HTTP requests \\
 AdvSQLi~\cite{advsqli2024} & 2024 & Adversarial SQLi generation & Commercial WAF-as-a-service & Attack paper; motivates robustness \\
-WAF-A-MoLE~\cite{demetrio2020wafamole} & 2020 & Adversarial evasion & ML WAFs & Attack paper; defenses still open \\
+WAF-A-MoLE & 2020 & Adversarial evasion & ML WAFs & Attack paper; defenses still open \\
 \textbf{This work} & -- & Hybrid rule+transformer, inline & CSIC 2010; F1 0.968, FPR 0.046, 11.7\,ms & Addresses inline/latency/FP/adv.; cross-dataset is future work \\
 \bottomrule
 \end{tabular}
@@ -296,7 +290,7 @@ TF--IDF + SVM/RF (baselines)         & Classical ML & ---       & ---     & --- 
 WADBERT~\cite{wadbert2026}           & Transformer & ---        & ---     & ---    & --- \\
 BERT--LSTM~\cite{liu2024bertlstm}    & Transformer & ---        & ---     & ---    & --- \\
 ADL-WAF~\cite{adlwaf2025}            & Hybrid ML   & partial    & ---     & partial& --- \\
-WAF-A-MoLE~\cite{demetrio2020wafamole} & Evasion   & ---        & ---     & ---    & --- \\
+WAF-A-MoLE & Evasion   & ---        & ---     & ---    & --- \\
 \textbf{This work}                   & Hybrid rule+transformer & \checkmark & \checkmark & \checkmark & future \\
 \bottomrule
 \end{tabular}
@@ -462,7 +456,7 @@ $p = P(y{=}1 \mid x)$, and the fusion policy maps $p$ together with rule signals
 to a decision.
 
 \subsection{Datasets}
-We evaluate on the CSIC~2010 HTTP dataset~\cite{gimenez2010csic}, the field's
+We evaluate on the CSIC~2010 HTTP dataset, the field's
 standard web-attack benchmark, using the tabular distribution of the corpus. Each
 request is parsed into the unified schema, deduplicated on the normalised text,
 and split $70/15/15$ into train/validation/test with stratification on the label
@@ -470,8 +464,8 @@ and a fixed random seed ($42$). After deduplication the working set contains
 $9{,}492$ unique requests (Table~\ref{tab:datasets}); the benign/malicious ratio
 reflects the deduplicated tabular release rather than the raw $36$k/$25$k packet
 counts of the original dump. We treat CSIC~2010 as the single evaluation corpus in
-this study; extending to a second, independent distribution (ECML/PKDD~2007~\cite{pkdd2007}
-or the real-traffic SR-BH corpus~\cite{srbh2020}) for cross-dataset transfer is
+this study; extending to a second, independent distribution (ECML/PKDD~2007
+or the real-traffic SR-BH corpus) for cross-dataset transfer is
 identified as the primary avenue for strengthening external validity
 (Section~\ref{sec:threats}).
 
@@ -503,10 +497,10 @@ the deployed service.
 The classifier is a pretrained transformer encoder with a linear classification
 head over the pooled \texttt{[CLS]} representation, fine-tuned end to end for
 binary classification. In this study we fine-tune
-\texttt{bert-base-uncased}~\cite{devlin2019bert} as the encoder; the training
+\texttt{bert-base-uncased} as the encoder; the training
 harness is model-agnostic and exposes two further configurations---the
-cybersecurity-pretrained SecureBERT~\cite{aghaei2022securebert} and the
-latency-oriented DistilBERT~\cite{sanh2019distilbert}---as drop-in alternatives
+cybersecurity-pretrained SecureBERT~\cite{aghaei2025securebert2} and the
+latency-oriented DistilBERT---as drop-in alternatives
 whose systematic comparison we leave to future work. Optimisation uses AdamW with
 a warmup schedule, weight decay, and early stopping on validation F1.
 
@@ -779,7 +773,7 @@ tiers, so the layered defence that costs precision on benign traffic is exactly
 what buys robustness here. This is the concrete pay-off that justifies retaining
 the rule layer despite its false-positive cost, and it contrasts with the
 evadability of model-only ML WAFs reported by
-WAF-A-MoLE~\cite{demetrio2020wafamole} and AdvSQLi~\cite{advsqli2024}. We caution
+WAF-A-MoLE and AdvSQLi~\cite{advsqli2024}. We caution
 that these six mutation families are not exhaustive; stronger, search-based
 adversaries~\cite{advsqli2024} are left to future work.
 
@@ -848,7 +842,7 @@ rules lowers F1 from $0.968$ to $0.863$ and raises FPR from $0.046$ to $0.226$
 The adversarial result argues the opposite: the same rule tiers give the hybrid
 $0\%$ evasion across six semantics-preserving mutation families
 (Table~\ref{tab:adv}), whereas a model-only detector is exactly the target that
-WAF-A-MoLE~\cite{demetrio2020wafamole} and AdvSQLi~\cite{advsqli2024} show can be
+WAF-A-MoLE and AdvSQLi~\cite{advsqli2024} show can be
 evaded. The resolution is that the two costs are paid on different traffic: the
 false positives fall on benign requests whose shape the signatures were not tuned
 for, while the robustness is gained on adversarial variants of genuine attacks.
@@ -885,8 +879,8 @@ as future work.
 deduplicated tabular form. Results may not transfer to other applications or to
 modern traffic; the strongest available remedy---which the released pipeline
 already supports---is a cross-dataset protocol training on CSIC and testing on an
-independent corpus such as ECML/PKDD~2007~\cite{pkdd2007}, the real-traffic
-SR-BH~\cite{srbh2020}, or a recent production capture~\cite{modsec30day2025}. We
+independent corpus such as ECML/PKDD~2007, the real-traffic
+SR-BH, or a recent production capture~\cite{modsec30day2025}. We
 regard this as the most important single extension of the work.
 
 \textbf{Construct validity.} Per-attack-class labels are assigned heuristically
