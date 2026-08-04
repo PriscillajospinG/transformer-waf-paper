@@ -1,13 +1,17 @@
 % ============================================================
 % References for the Transformer-WAF papers.
-% Every entry below corresponds to a real, checkable work published 2023
-% or later (2023, 2024, 2025, 2026), per explicit request. NOTE:
-% foundational-model and dataset papers (BERT, Transformer, CSIC 2010,
-% DistilBERT, WAF-A-MoLE, etc.) have been deliberately excluded even
-% though they are older than the systems built on them; the main text
-% has been rewritten to describe those systems/datasets by name without
-% a citation. See paper/BIBLIOGRAPHY_NOTE.md for the full list of what
-% was removed and why this is unconventional for a real submission.
+%
+% Policy (updated 2026-08-03, per explicit user request): the 2023+ recency
+% policy applies to the LITERATURE SURVEY / related-work citations, which
+% are all 2023 or later. Foundational model and dataset papers that this
+% work is directly BUILT ON (BERT, the Transformer architecture, RoBERTa,
+% DistilBERT, TinyBERT, SecureBERT's original 2022/2023 paper, CSIC 2010,
+% PKDD 2007, SR-BH, BM25, WAF-A-MoLE, LogBERT, HTTP2vec) have been added
+% back below, even where older than 2023, because these are attribution
+% citations (crediting the technique/dataset used) rather than recency
+% claims, which is standard practice and exempt from a "recent literature"
+% cutoff at every venue. See paper/BIBLIOGRAPHY_NOTE.md for the full
+% history of what was removed and re-added and why.
 % ============================================================
 
 @article{aghaei2025securebert2,
@@ -178,4 +182,114 @@
   author={Author and others},
   journal={Journal of Information Systems and Informatics},
   year={2024}
+}
+
+@article{genxss2025,
+  title={{GenXSS}: an {AI}-Driven Framework for Automated Detection of {XSS} Attacks in {WAF}s},
+  author={Babaey, Vahid and Ravindran, Arun},
+  journal={arXiv preprint arXiv:2504.08176},
+  year={2025}
+}
+
+% ============================================================
+% Foundational model / dataset references (re-added 2026-08-03 per
+% explicit user request). Attribution citations, not recency claims.
+% ============================================================
+
+@inproceedings{vaswani2017attention,
+  title={Attention is all you need},
+  author={Vaswani, Ashish and Shazeer, Noam and Parmar, Niki and Uszkoreit, Jakob and Jones, Llion and Gomez, Aidan N and Kaiser, {\L}ukasz and Polosukhin, Illia},
+  booktitle={Advances in Neural Information Processing Systems (NeurIPS)},
+  volume={30},
+  year={2017}
+}
+
+@inproceedings{devlin2019bert,
+  title={{BERT}: Pre-training of Deep Bidirectional Transformers for Language Understanding},
+  author={Devlin, Jacob and Chang, Ming-Wei and Lee, Kenton and Toutanova, Kristina},
+  booktitle={Proceedings of NAACL-HLT},
+  year={2019}
+}
+
+@article{liu2019roberta,
+  title={{RoBERTa}: A Robustly Optimized {BERT} Pretraining Approach},
+  author={Liu, Yinhan and Ott, Myle and Goyal, Naman and Du, Jingfei and Joshi, Mandar and Chen, Danqi and Levy, Omer and Lewis, Mike and Zettlemoyer, Luke and Stoyanov, Veselin},
+  journal={arXiv preprint arXiv:1907.11692},
+  year={2019}
+}
+
+@article{sanh2019distilbert,
+  title={{DistilBERT}, a distilled version of {BERT}: smaller, faster, cheaper and lighter},
+  author={Sanh, Victor and Debut, Lysandre and Chaumond, Julien and Wolf, Thomas},
+  journal={arXiv preprint arXiv:1910.01108},
+  year={2019}
+}
+
+@inproceedings{jiao2020tinybert,
+  title={{TinyBERT}: Distilling {BERT} for Natural Language Understanding},
+  author={Jiao, Xiaoqi and Yin, Yichun and Shang, Lifeng and Jiang, Xin and Chen, Xiao and Li, Linlin and Wang, Fang and Liu, Qun},
+  booktitle={Findings of the Association for Computational Linguistics: EMNLP},
+  year={2020}
+}
+
+@inproceedings{aghaei2022securebert,
+  title={{SecureBERT}: A Domain-Specific Language Model for Cybersecurity},
+  author={Aghaei, Ehsan and Niu, Xi and Shadid, Waseem and Al-Shaer, Ehab},
+  booktitle={Proceedings of the 18th EAI International Conference on Security and Privacy in Communication Networks (SecureComm 2022)},
+  year={2023},
+  note={Conference held Oct.\ 2022; Springer proceedings published 2023. arXiv:2204.02685}
+}
+
+@inproceedings{guo2021logbert,
+  title={{LogBERT}: Log Anomaly Detection via {BERT}},
+  author={Guo, Haixuan and Yuan, Shuhan and Wu, Xintao},
+  booktitle={International Joint Conference on Neural Networks (IJCNN)},
+  year={2021}
+}
+
+@article{http2vec2021,
+  title={{HTTP2vec}: Embedding of {HTTP} Requests for Detection of Anomalous Traffic},
+  author={Gniewkowski, Mateusz and Maciejewski, Henryk and Surmacz, Tomasz R. and Walentynowicz, Wiktor},
+  journal={arXiv preprint arXiv:2108.01763},
+  year={2021}
+}
+
+@article{robertson2009bm25,
+  title={The Probabilistic Relevance Framework: {BM25} and Beyond},
+  author={Robertson, Stephen and Zaragoza, Hugo},
+  journal={Foundations and Trends in Information Retrieval},
+  volume={3},
+  number={4},
+  pages={333--389},
+  year={2009}
+}
+
+@techreport{gimenez2010csic,
+  title={{HTTP} Data Set {CSIC} 2010},
+  author={Gim{\'e}nez, Carmen Torrano and P{\'e}rez Villegas, Alejandro and {\'A}lvarez Mara{\~n}{\'o}n, Gonzalo},
+  institution={Information Security Institute, CSIC (Spanish National Research Council)},
+  year={2010}
+}
+
+@inproceedings{pkdd2007,
+  title={Analyzing {Web} Traffic: {ECML/PKDD} 2007 Discovery Challenge},
+  author={{ECML/PKDD Discovery Challenge Organizers}},
+  booktitle={ECML/PKDD Discovery Challenge Workshop},
+  year={2007}
+}
+
+@article{srbh2020,
+  title={A new multi-label dataset for Web attacks {CAPEC} classification using machine learning techniques},
+  author={Riera, Tom{\'a}s Sureda and Higuera, Juan Ram{\'o}n Bermejo and Higuera, Javier Bermejo and Montalvo, Juan Antonio Sicilia},
+  journal={Computers \& Security},
+  year={2022},
+  publisher={Elsevier},
+  note={SR-BH 2020 dataset paper; traffic collected 2020, published 2022}
+}
+
+@inproceedings{demetrio2020wafamole,
+  title={{WAF-A-MoLE}: Evading Web Application Firewalls through Adversarial Machine Learning},
+  author={Demetrio, Luca and Valenza, Andrea and Costa, Gabriele and Lagorio, Giovanni},
+  booktitle={Proceedings of the 35th Annual ACM Symposium on Applied Computing (SAC)},
+  year={2020}
 }
