@@ -61,20 +61,25 @@ integrates a fine-tuned transformer classifier into a transparent inline
 enforcement path built on the Nginx \texttt{auth\_request} mechanism, requiring
 no changes to the protected application, and adjudicated by a four-tier policy
 that layers deterministic signatures and anomaly rules with the model. On the
-CSIC~2010 benchmark, the fine-tuned BERT detector attains an F1 of $0.968$ at a
-false-positive rate (FPR) of $0.046$ and ROC--AUC of $0.983$, competitive with a
+CSIC~2010 benchmark, the fine-tuned BERT detector attains an F1 of $0.966$ at a
+false-positive rate (FPR) of $0.044$ and ROC--AUC of $0.986$, competitive with a
 strong TF--IDF support-vector baseline ($0.965$ F1) and far above the signature
 rule engine alone ($0.567$ F1, recall $0.43$), while single-request GPU inference
-adds a median of $11.7$~ms ($p99{=}16.3$~ms). Layering the rules with the model
-in a defence-in-depth configuration yields complete resistance to six families of
-semantics-preserving evasion (0\% evasion over 246 initially blocked payloads),
-but raises the benign false-positive rate to $0.226$ because signature rules
-calibrated for one application over-block another's legitimate traffic. This
-accuracy--robustness trade-off---which concretely re-exhibits the very rule
-brittleness that motivates learned detection---is characterised through an
-ablation, a threshold-sensitivity analysis, and per-attack-class results. Our
-contribution is thus a measured, honest characterisation of transformer-based
-inline web attack detection rather than an unqualified accuracy claim.
+adds a median of $12.0$~ms ($p99{=}17.0$~ms). Both the model alone and the
+rule-augmented hybrid resist all six families of semantics-preserving evasion we
+test (0\% evasion each, over 246 initially blocked payloads), so this particular
+adversarial test does not by itself justify the rule layer's benign-traffic cost
+($0.231$ FPR for the hybrid vs.\ $0.044$ for the model alone). The layer earns its
+keep elsewhere: evaluated zero-shot on an independent corpus (SR-BH~2020), the
+model alone collapses (FPR $1.00$, flagging almost all traffic as malicious),
+while the hybrid recovers to F1~$0.971$ at FPR~$0.0005$---the rule layer is what
+keeps the system usable outside its training distribution, not what resists the
+specific evasions we tested. This accuracy--robustness--generalisation trade-off,
+which also re-exhibits the very rule brittleness that motivates learned detection,
+is characterised through an ablation, a threshold-sensitivity analysis,
+per-attack-class results, and a cross-dataset evaluation. Our contribution is
+thus a measured, honest characterisation of transformer-based inline web attack
+detection rather than an unqualified accuracy claim.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -142,8 +147,8 @@ inline inference cost this incurs (Sections~\ref{sec:arch} and~\ref{sec:results}
 trade-off.} We define a policy that layers deterministic signatures, anomaly
 rules and confidence-banded model scoring with an endpoint-aware relaxation and a
 fail-open safeguard, formalise it as an algorithm (Section~\ref{sec:method}), and
-show empirically that on a clean benchmark this layering improves adversarial
-robustness but degrades benign false-positive rate---quantifying, rather than
+show empirically that on this benchmark this layering degrades benign
+false-positive rate relative to the model alone---quantifying, rather than
 hiding, the tension between signature coverage and precision.
 \item \textbf{An end-to-end empirical characterisation on CSIC~2010.} We report
 detection quality with an emphasis on false-positive rate, an ablation isolating
@@ -151,9 +156,16 @@ the transformer's contribution over the rule engine, per-attack-class recall, a
 threshold-sensitivity analysis of the FPR/recall trade-off, and measured inline
 latency (Section~\ref{sec:results}).
 \item \textbf{An adversarial-evasion stress test} that mutates blocked payloads
-with six families of semantics-preserving transformation and reports the
-resulting evasion rate---a robustness check almost absent from prior
-transformer-WAF work (Section~\ref{sec:results}).
+with six families of semantics-preserving transformation and compares the
+resulting evasion rate for the model alone against the hybrid---a robustness
+check almost absent from prior transformer-WAF work, and one whose result
+argues against, not for, the rule layer on this specific test
+(Section~\ref{sec:results}).
+\item \textbf{A cross-dataset generalisation evaluation.} We train on CSIC~2010
+and test zero-shot on an independent corpus (SR-BH~2020), and show that this,
+not adversarial evasion, is where the rule layer's false-positive cost is
+concretely repaid: the model alone collapses out-of-distribution while the
+hybrid does not (Section~\ref{sec:results}).
 \end{enumerate}
 
 The remainder of the paper reviews related work
@@ -290,7 +302,7 @@ Payload ML~\cite{payloadml2024svmrfxgb} & 2024 & SVM/RF/XGBoost & SQLi/XSS/cmd p
 DistilXIDS~\cite{distilxids2025} & 2025 & Distilled transformer, explainable & NIDS sets; $>$99\% F1, low latency & Network flows, not HTTP requests \\
 AdvSQLi~\cite{advsqli2024} & 2024 & Adversarial SQLi generation & Commercial WAF-as-a-service & Attack paper; motivates robustness \\
 WAF-A-MoLE~\cite{demetrio2020wafamole} & 2020 & Adversarial evasion & ML WAFs & Attack paper; defenses still open \\
-\textbf{This work} & -- & Hybrid rule+transformer, inline & CSIC 2010; F1 0.968, FPR 0.046, 11.7\,ms & Addresses inline/latency/FP/adv.; cross-dataset is future work \\
+\textbf{This work} & -- & Hybrid rule+transformer, inline & CSIC 2010; F1 0.966, FPR 0.044, 12.0\,ms; cross-dataset tested & Addresses inline/latency/FP/adv./generalisation jointly \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -310,7 +322,7 @@ WADBERT~\cite{wadbert2026}           & Transformer & ---        & ---     & --- 
 BERT--LSTM~\cite{liu2024bertlstm}    & Transformer & ---        & ---     & ---    & --- \\
 ADL-WAF~\cite{adlwaf2025}            & Hybrid ML   & partial    & ---     & partial& --- \\
 WAF-A-MoLE~\cite{demetrio2020wafamole} & Evasion   & ---        & ---     & ---    & --- \\
-\textbf{This work}                   & Hybrid rule+transformer & \checkmark & \checkmark & \checkmark & future \\
+\textbf{This work}                   & Hybrid rule+transformer & \checkmark & \checkmark & \checkmark & partial \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -482,10 +494,13 @@ and split $70/15/15$ into train/validation/test with stratification on the label
 and a fixed random seed ($42$). After deduplication the working set contains
 $9{,}492$ unique requests (Table~\ref{tab:datasets}); the benign/malicious ratio
 reflects the deduplicated tabular release rather than the raw $36$k/$25$k packet
-counts of the original dump. We treat CSIC~2010 as the single evaluation corpus in
-this study; extending to a second, independent distribution (ECML/PKDD~2007~\cite{pkdd2007}
-or the real-traffic SR-BH corpus~\cite{srbh2020}) for cross-dataset transfer is
-identified as the primary avenue for strengthening external validity
+counts of the original dump. CSIC~2010 is the corpus used for training and for
+all within-dataset results in this paper. To probe generalisation beyond it, we
+additionally evaluate the CSIC-trained detector zero-shot on the independent
+real-traffic SR-BH~2020 corpus~\cite{srbh2020} (Section~\ref{sec:results}); we
+did not fine-tune a fresh model on SR-BH~2020 or test the reverse direction, and
+a further independent corpus such as ECML/PKDD~2007~\cite{pkdd2007} remains
+identified as a next step for strengthening external validity
 (Section~\ref{sec:threats}).
 
 \begin{table}[t]
@@ -617,9 +632,9 @@ malicious, $456$ benign), which is never seen during training or model selection
 \subsection{Detection quality and baselines}
 Table~\ref{tab:main} reports detection for the transformer, the classical
 baselines, the rule engine, and the full hybrid. The fine-tuned BERT detector is
-the strongest configuration, reaching F1~$0.968$ at FPR~$0.046$ with ROC--AUC
-$0.983$. It edges the TF--IDF linear-SVM baseline on F1 ($0.968$ vs.\ $0.965$)
-and clearly improves on its false-positive rate ($0.046$ vs.\ $0.057$); the
+the strongest configuration, reaching F1~$0.966$ at FPR~$0.044$ with ROC--AUC
+$0.986$. It edges the TF--IDF linear-SVM baseline on F1 ($0.966$ vs.\ $0.965$)
+and improves on its false-positive rate ($0.044$ vs.\ $0.057$); the
 random forest trails on both ($0.927$ F1, $0.150$ FPR). The deterministic rule
 engine alone is weak on this corpus: it recalls only $43.5\%$ of attacks at a
 $20.9\%$ false-positive rate, because signatures calibrated for a different
@@ -637,8 +652,8 @@ Method & P & R & F1 & FPR & AUC \\
 Rule engine only       & 0.816 & 0.435 & 0.567 & 0.209 & --- \\
 TF--IDF + LinearSVM    & 0.973 & 0.957 & 0.965 & 0.057 & \textbf{0.992} \\
 TF--IDF + RandomForest & 0.929 & 0.924 & 0.927 & 0.150 & 0.958 \\
-BERT (model only)      & \textbf{0.978} & \textbf{0.959} & \textbf{0.968} & \textbf{0.046} & 0.983 \\
-Hybrid (rules+model)   & 0.888 & 0.840 & 0.863 & 0.226 & 0.983 \\
+BERT (model only)      & \textbf{0.979} & \textbf{0.953} & \textbf{0.966} & \textbf{0.044} & 0.986 \\
+Hybrid (rules+model)   & 0.885 & 0.837 & 0.861 & 0.231 & 0.986 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -654,8 +669,8 @@ Hybrid (rules+model)   & 0.888 & 0.840 & 0.863 & 0.226 & 0.983 \\
   ylabel={score}, legend style={at={(0.5,1.14)},anchor=north,legend columns=2,font=\footnotesize},
   x tick label style={font=\footnotesize}, y tick label style={font=\footnotesize},
   enlarge x limits=0.12]
-\addplot coordinates {(Rules,0.567)(SVM,0.965)(RF,0.927)(BERT,0.968)(Hybrid,0.863)};
-\addplot coordinates {(Rules,0.209)(SVM,0.057)(RF,0.150)(BERT,0.046)(Hybrid,0.226)};
+\addplot coordinates {(Rules,0.567)(SVM,0.965)(RF,0.927)(BERT,0.966)(Hybrid,0.861)};
+\addplot coordinates {(Rules,0.209)(SVM,0.057)(RF,0.150)(BERT,0.044)(Hybrid,0.231)};
 \legend{F1, FPR}
 \end{axis}
 \end{tikzpicture}
@@ -668,16 +683,18 @@ rule layer (Hybrid) raises FPR.}
 \subsection{Ablation: the layers in isolation}
 Table~\ref{tab:ablation} isolates each layer on the identical test set. The
 transformer contributes almost all of the detection quality: model-only more than
-doubles the F1 of rules-only ($0.968$ vs.\ $0.567$) and cuts the false-positive
-rate more than fourfold ($0.046$ vs.\ $0.209$). The hybrid, which blocks whenever
+doubles the F1 of rules-only ($0.966$ vs.\ $0.567$) and cuts the false-positive
+rate more than fourfold ($0.044$ vs.\ $0.209$). The hybrid, which blocks whenever
 \emph{either} the rules \emph{or} the model fire, inherits the rules'
-false positives: its FPR ($0.226$) is close to the rules-only figure and its F1
-($0.863$) sits below model-only. In other words, on a benchmark whose benign
+false positives: its FPR ($0.231$) is close to the rules-only figure and its F1
+($0.861$) sits below model-only. In other words, on a benchmark whose benign
 traffic the signatures were not tuned for, the rule layer subtracts rather than
 adds accuracy. This is not a defect of the model but a property of disjunctive
 fusion, and it directly re-exhibits the rule-brittleness that motivates learned
 detection in the first place; Section~\ref{sec:discussion} returns to why the
-layer is nonetheless retained.
+layer is nonetheless retained --- not for accuracy on this benchmark, and (as
+Section~\ref{sec:results} shows next) not primarily for adversarial robustness
+either, but for cross-dataset generalisation.
 
 \begin{table}[t]
 \centering
@@ -688,16 +705,16 @@ layer is nonetheless retained.
 Configuration & P & R & F1 & FPR \\
 \midrule
 Rules only  & 0.816 & 0.435 & 0.567 & 0.209 \\
-Model only  & \textbf{0.978} & \textbf{0.959} & \textbf{0.968} & \textbf{0.046} \\
-Hybrid      & 0.888 & 0.840 & 0.863 & 0.226 \\
+Model only  & \textbf{0.979} & \textbf{0.953} & \textbf{0.966} & \textbf{0.044} \\
+Hybrid      & 0.885 & 0.837 & 0.861 & 0.231 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \subsection{Confusion structure}
 Fig.~\ref{fig:cm} shows the confusion matrices for model-only and hybrid. The
-transformer misclassifies $21$ benign and $40$ malicious requests out of $1{,}424$;
-the hybrid trades $18$ additional true blocks recovered by signatures against $82$
+transformer misclassifies $20$ benign and $46$ malicious requests out of $1{,}424$;
+the hybrid trades $12$ additional true blocks recovered by signatures against $85$
 extra benign requests wrongly blocked, making the false-positive column the
 dominant change.
 
@@ -709,8 +726,8 @@ dominant change.
   \begin{scope}
     \node at (1,3.3) {\textbf{BERT (model only)}};
     \draw (0,0) rectangle (2,2);
-    \node at (0.5,1.5){434}; \node at (1.5,1.5){21};
-    \node at (0.5,0.5){40};  \node at (1.5,0.5){929};
+    \node at (0.5,1.5){436}; \node at (1.5,1.5){20};
+    \node at (0.5,0.5){46};  \node at (1.5,0.5){922};
     \node[rotate=90] at (-0.4,1){Actual};
     \node at (0.5,2.3){benign}; \node at (1.5,2.3){malicious};
     \node at (-0.05,1.5){\scriptsize ben}; \node at (-0.05,0.5){\scriptsize mal};
@@ -719,14 +736,14 @@ dominant change.
   \begin{scope}[xshift=4.6cm]
     \node at (1,3.3) {\textbf{Hybrid}};
     \draw (0,0) rectangle (2,2);
-    \node at (0.5,1.5){352}; \node at (1.5,1.5){103};
-    \node at (0.5,0.5){155}; \node at (1.5,0.5){814};
+    \node at (0.5,1.5){351}; \node at (1.5,1.5){105};
+    \node at (0.5,0.5){158}; \node at (1.5,0.5){810};
     \node at (0.5,2.3){benign}; \node at (1.5,2.3){malicious};
   \end{scope}
 \end{tikzpicture}
 \caption{Confusion matrices on the CSIC~2010 test set (columns: prediction; rows:
 ground truth). The hybrid's benign--malicious cell (false positives) grows from
-$21$ to $103$.}
+$20$ to $105$.}
 \label{fig:cm}
 \end{figure}
 
@@ -747,7 +764,7 @@ heterogeneous ``other'' bucket is the hardest.
   xmin=0, xmax=1.05, xlabel={recall},
   nodes near coords, nodes near coords style={font=\scriptsize},
   x tick label style={font=\footnotesize}, y tick label style={font=\footnotesize}]
-\addplot coordinates {(1.0,sqli)(1.0,encoding)(0.794,other)};
+\addplot coordinates {(1.0,sqli)(1.0,encoding)(0.790,other)};
 \end{axis}
 \end{tikzpicture}
 \caption{Per-attack-class recall of the hybrid on CSIC~2010.}
@@ -758,11 +775,11 @@ heterogeneous ``other'' bucket is the hardest.
 Because the transformer emits a calibrated probability, the operator can trade
 recall against false positives by moving the decision threshold.
 Fig.~\ref{fig:threshold} plots both as the threshold sweeps from $0.50$ to
-$0.98$. Recall is broad and flat---it only falls from $0.959$ to $0.925$ across
-the whole range---while the false-positive rate more than halves, from $0.046$ to
-$0.020$. An operator prioritising precision can therefore run the model at
-$\tau=0.98$ and roughly halve benign blocks for a $3.4$-point recall cost; the
-best-F1 point is $\tau=0.50$ (F1~$0.968$, FPR~$0.046$).
+$0.98$. Recall is broad and flat---it only falls from $0.953$ to $0.902$ across
+the whole range---while the false-positive rate more than halves, from $0.044$ to
+$0.018$. An operator prioritising precision can therefore run the model at
+$\tau=0.98$ and roughly halve benign blocks for a $5.1$-point recall cost; the
+best-F1 point is $\tau=0.50$ (F1~$0.966$, FPR~$0.044$).
 
 \begin{figure}[t]
 \centering
@@ -774,11 +791,11 @@ best-F1 point is $\tau=0.50$ (F1~$0.968$, FPR~$0.046$).
   legend style={at={(0.5,-0.28)},anchor=north,legend columns=2,font=\footnotesize},
   grid=major, x tick label style={font=\footnotesize}, y tick label style={font=\footnotesize}]
 \addplot[thick,mark=*,mark size=1pt] coordinates {
- (0.50,0.9587)(0.56,0.9577)(0.62,0.9577)(0.68,0.9546)(0.74,0.9536)
- (0.80,0.9515)(0.86,0.9453)(0.90,0.9443)(0.94,0.9422)(0.96,0.9401)(0.98,0.9247)};
+ (0.50,0.9525)(0.56,0.9505)(0.62,0.9474)(0.68,0.9443)(0.74,0.9432)
+ (0.80,0.9432)(0.86,0.9422)(0.90,0.9412)(0.94,0.9370)(0.96,0.9319)(0.98,0.9020)};
 \addplot[thick,dashed,mark=square*,mark size=1pt] coordinates {
- (0.50,0.0462)(0.56,0.0462)(0.62,0.0462)(0.68,0.0440)(0.74,0.0440)
- (0.80,0.0418)(0.86,0.0396)(0.90,0.0396)(0.94,0.0396)(0.96,0.0308)(0.98,0.0198)};
+ (0.50,0.0440)(0.56,0.0440)(0.62,0.0418)(0.68,0.0418)(0.74,0.0418)
+ (0.80,0.0352)(0.86,0.0352)(0.90,0.0352)(0.94,0.0330)(0.96,0.0242)(0.98,0.0176)};
 \legend{recall, FPR}
 \end{axis}
 \end{tikzpicture}
@@ -789,8 +806,8 @@ CSIC~2010. Recall is nearly flat; FPR falls by more than half as $\tau\to0.98$.}
 
 \subsection{Latency}
 Table~\ref{tab:latency} reports single-request transformer inference latency on
-the Tesla~T4. The median is $11.7$~ms with a $p99$ of $16.3$~ms, sustaining about
-$88$ requests per second per process; batching and additional worker processes
+the Tesla~T4. The median is $12.0$~ms with a $p99$ of $17.0$~ms, sustaining about
+$87$ requests per second per process; batching and additional worker processes
 raise aggregate throughput. This confirms that transformer inference is fast
 enough to sit synchronously in the request path for moderate-traffic services,
 and motivates the distilled and quantised variants (Section~\ref{sec:discussion})
@@ -805,7 +822,7 @@ for higher-throughput or CPU-only deployments.
 Configuration & mean & p50 & p95 & p99 & RPS \\
  & (ms) & (ms) & (ms) & (ms) & (1 proc.) \\
 \midrule
-BERT (GPU, T4) & 11.3 & 11.7 & 14.8 & 16.3 & 88.4 \\
+BERT (GPU, T4) & 11.5 & 12.0 & 15.3 & 17.0 & 86.8 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -813,33 +830,79 @@ BERT (GPU, T4) & 11.3 & 11.7 & 14.8 & 16.3 & 88.4 \\
 \subsection{Adversarial evasion}
 We took the $246$ malicious test payloads that the hybrid initially blocks and
 applied six semantics-preserving mutations to each, re-submitting the mutated
-variants (Table~\ref{tab:adv}). None of the mutations evaded detection: the
-overall evasion rate is $0\%$. The reason is structural---inline comments, case
-changes and encoding all still trip the double-decoded signature and encoding
-tiers, so the layered defence that costs precision on benign traffic is exactly
-what buys robustness here. This is the concrete pay-off that justifies retaining
-the rule layer despite its false-positive cost, and it contrasts with the
-evadability of model-only ML WAFs reported by
-WAF-A-MoLE~\cite{demetrio2020wafamole} and AdvSQLi~\cite{advsqli2024}. We caution
-that these six mutation families are not exhaustive; stronger, search-based
-adversaries~\cite{advsqli2024} are left to future work.
+variants (Table~\ref{tab:adv}). None of the mutations evaded the hybrid: the
+overall evasion rate is $0\%$. To isolate what the rule layer actually
+contributes, we repeated the identical test against the transformer
+\emph{alone}, with the rule tiers disabled. The model alone also achieved
+$0\%$ evasion across all six mutation families---an outcome we did not expect
+and report exactly as measured. On this specific test, the rule layer is
+therefore \emph{not} what is buying robustness: a well-trained transformer
+already resists these particular semantics-preserving mutations without help,
+which contradicts the framing in some of the ML-WAF-evasion
+literature~\cite{demetrio2020wafamole,advsqli2024} that treats model-only
+detectors as reliably evadable. We do not conclude that the rule layer is
+therefore useless---Section~\ref{sec:results} next reports a cross-dataset
+test where the rule layer's benefit is large and unambiguous---only that its
+justification is not this adversarial-evasion result. We caution that these
+six mutation families are not exhaustive; stronger, search-based
+adversaries~\cite{advsqli2024} are left to future work, and it remains
+possible that a more aggressive adversary would separate the two
+configurations where these six families did not.
 
 \begin{table}[t]
 \centering
 \caption{Evasion rate of $246$ initially-blocked payloads under
-semantics-preserving mutation (hybrid configuration).}
+semantics-preserving mutation: hybrid vs.\ model alone.}
 \label{tab:adv}
-\begin{tabular}{@{}lc@{}}
+\begin{tabular}{@{}lcc@{}}
 \toprule
-Mutation family & Evasion rate \\
+Mutation family & Hybrid & Model only \\
 \midrule
-Inline comment (\texttt{/**/}) & 0.00 \\
-Case randomisation             & 0.00 \\
-URL encoding                   & 0.00 \\
-Double URL encoding            & 0.00 \\
-Whitespace / tab substitution  & 0.00 \\
-Junk parameter append          & 0.00 \\
-\textbf{Overall}               & \textbf{0.00} \\
+Inline comment (\texttt{/**/}) & 0.00 & 0.00 \\
+Case randomisation             & 0.00 & 0.00 \\
+URL encoding                   & 0.00 & 0.00 \\
+Double URL encoding            & 0.00 & 0.00 \\
+Whitespace / tab substitution  & 0.00 & 0.00 \\
+Junk parameter append          & 0.00 & 0.00 \\
+\textbf{Overall}               & \textbf{0.00} & \textbf{0.00} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Cross-dataset generalisation}
+\label{sec:crossdataset}
+The results above are all within-distribution: the model is trained and tested
+on CSIC~2010. To test whether that success transfers, we took the CSIC-trained
+detector, without any further fine-tuning, and evaluated it zero-shot on an
+independent, real-traffic corpus, SR-BH~2020~\cite{srbh2020}
+(Table~\ref{tab:cross}). The result is stark. The transformer alone
+\emph{collapses}: FPR rises to $1.00$, meaning it flags essentially every
+request on the new corpus as malicious, and precision falls to $0.429$---a
+detector in this state is unusable in production regardless of its recall. The
+hybrid, evaluated on the identical zero-shot requests, is stable: F1~$0.971$,
+FPR~$0.0005$, precision~$0.999$. The deterministic rule tiers, which do not
+depend on CSIC-specific learned statistics, catch the distribution shift that
+silently breaks the model-only configuration. This is the result we consider
+the strongest justification for the layered architecture in this paper: not
+the adversarial-evasion test above, where model-only was already robust, but
+generalisation to traffic the model was never trained on, where model-only
+fails catastrophically and the rule layer is what keeps the system usable. We
+tested only the CSIC$\to$SR-BH direction with a single second corpus and did
+not fine-tune a fresh model on SR-BH itself; Section~\ref{sec:threats}
+discusses this scope.
+
+\begin{table}[t]
+\centering
+\caption{Zero-shot cross-dataset transfer: CSIC-trained detector evaluated on
+SR-BH~2020~\cite{srbh2020} without further fine-tuning.}
+\label{tab:cross}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Configuration & P & R & F1 & FPR & AUC \\
+\midrule
+CSIC~$\to$~CSIC (reference)      & 0.979 & 0.953 & 0.966 & 0.044 & 0.986 \\
+CSIC~$\to$~SR-BH (model only)    & 0.429 & \textbf{1.000} & 0.601 & \textbf{1.000} & 0.859 \\
+CSIC~$\to$~SR-BH (hybrid)        & \textbf{0.999} & 0.944 & \textbf{0.971} & \textbf{0.0005} & 0.859 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -848,7 +911,7 @@ Junk parameter append          & 0.00 \\
 Table~\ref{tab:priorcompare} places our figures beside recent transformer and
 deep-learning detectors on CSIC~2010. Reported accuracies in that literature are
 typically above $99\%$~\cite{wadbert2026,scireports2024novelxsssqli}, higher than
-our $0.968$ F1, and the gap is worth explaining mechanistically rather than
+our $0.966$ F1, and the gap is worth explaining mechanistically rather than
 waving away. CSIC~2010's benign traffic is templated: a small number of
 request patterns (a handful of endpoints with substituted parameter values)
 recur thousands of times across the corpus. If duplicate or near-duplicate
@@ -884,7 +947,7 @@ WADBERT~\cite{wadbert2026}                 & 99.6 F1  & --- & --- & --- \\
 Novel DL~\cite{scireports2024novelxsssqli} & $>$99 acc & --- & --- & --- \\
 BERT--LSTM~\cite{liu2024bertlstm}          & 97.3 acc & --- & --- & --- \\
 E-WebGuard~\cite{zhou2025ewebguard}        & high prec.& --- & --- & --- \\
-\textbf{This work}                         & 96.8 F1  & \checkmark & \checkmark & \checkmark \\
+\textbf{This work}                         & 96.6 F1  & \checkmark & \checkmark & \checkmark \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -894,32 +957,46 @@ E-WebGuard~\cite{zhou2025ewebguard}        & high prec.& --- & --- & --- \\
 \label{sec:discussion}
 
 \subsection{Why keep the rule layer at all?}
-The central empirical tension of this paper is that the rule layer helps
-robustness and hurts clean-traffic precision. On CSIC~2010 the transformer alone
-is the best detector by every accuracy metric, and disjunctive fusion with the
-rules lowers F1 from $0.968$ to $0.863$ and raises FPR from $0.046$ to $0.226$
-(Table~\ref{tab:ablation}). Read in isolation, this argues for dropping the rules.
-The adversarial result argues the opposite: the same rule tiers give the hybrid
-$0\%$ evasion across six semantics-preserving mutation families
-(Table~\ref{tab:adv}), whereas a model-only detector is exactly the target that
-WAF-A-MoLE~\cite{demetrio2020wafamole} and AdvSQLi~\cite{advsqli2024} show can be
-evaded. The resolution is that the two costs are paid on different traffic: the
-false positives fall on benign requests whose shape the signatures were not tuned
-for, while the robustness is gained on adversarial variants of genuine attacks.
-This suggests a practical deployment discipline---calibrate the anomaly and
-character-density rules to the protected application's own benign distribution, or
-restrict the always-on deterministic tiers to the high-precision direct
-signatures and let the calibrated transformer carry the ambiguous middle. Both are
-one-line policy changes in Algorithm~\ref{alg:fusion}; evaluating them is future
-work.
+The central empirical tension of this paper is that the rule layer costs
+clean-traffic precision, and we set out expecting to justify that cost with
+adversarial robustness. On CSIC~2010 the transformer alone is the best
+detector by every accuracy metric, and disjunctive fusion with the rules
+lowers F1 from $0.966$ to $0.861$ and raises FPR from $0.044$ to $0.231$
+(Table~\ref{tab:ablation}). Read in isolation, this argues for dropping the
+rules. We initially expected the adversarial-evasion test to argue the
+opposite---as WAF-A-MoLE~\cite{demetrio2020wafamole} and
+AdvSQLi~\cite{advsqli2024} would suggest a model-only detector is reliably
+evadable---but it did not: the model alone matched the hybrid at $0\%$
+evasion across all six mutation families we tested (Table~\ref{tab:adv}).
+That result, reported honestly rather than adjusted to fit the expected
+narrative, means the rule layer's justification cannot rest on this test. It
+rests instead on cross-dataset generalisation (Section~\ref{sec:crossdataset}):
+zero-shot on SR-BH~2020, the model alone collapses to FPR~$1.00$ while the
+hybrid holds at F1~$0.971$. The resolution, then, is not "robustness vs.\
+precision" as we originally framed it, but \emph{distribution-shift
+robustness vs.\ precision}: the false positives fall on benign requests whose
+shape the signatures were not tuned for, while the benefit is realised on
+traffic the model was never trained on, not on adversarial mutations of
+familiar attacks. This suggests a practical deployment discipline---calibrate
+the anomaly and character-density rules to the protected application's own
+benign distribution, or restrict the always-on deterministic tiers to the
+high-precision direct signatures and let the calibrated transformer carry the
+ambiguous middle---and it argues for treating the rule layer specifically as
+an out-of-distribution safety net rather than an adversarial-evasion
+defence. Both suggested policy changes are one-line edits to
+Algorithm~\ref{alg:fusion}; evaluating them is future work.
 
 \subsection{The rule brittleness is itself a finding}
 That signatures calibrated for one application misfire on another's benign traffic
 is precisely the maintenance burden that motivates learned detection in the
 introduction, here reproduced as a measured $20.9\%$ false-positive rate for
 rules-only. The transformer, by contrast, learned CSIC's benign distribution from
-data and reached a $4.6\%$ FPR without hand-tuning. This is a small but direct
-piece of evidence for the paper's premise.
+data and reached a $4.4\%$ FPR without hand-tuning. This is a small but direct
+piece of evidence for the paper's premise---and yet the same transformer
+proved brittle in exactly the same way once the traffic distribution changed
+(Section~\ref{sec:crossdataset}), which is the more consequential version of
+this finding: learned detection removes one maintenance burden (per-application
+rule tuning) but does not remove distribution dependence, it only relocates it.
 
 \subsection{Scope of the detector}
 The detector inspects the request line and, where available, the request body;
@@ -954,13 +1031,19 @@ a scaling question this paper does not evaluate.
 %=======================================================================
 \section{Threats to Validity}
 \label{sec:threats}
-\textbf{External validity.} The evaluation uses a single corpus, CSIC~2010, in its
-deduplicated tabular form. Results may not transfer to other applications or to
-modern traffic; the strongest available remedy---which the released pipeline
-already supports---is a cross-dataset protocol training on CSIC and testing on an
-independent corpus such as ECML/PKDD~2007~\cite{pkdd2007}, the real-traffic
-SR-BH~\cite{srbh2020}, or a recent production capture~\cite{modsec30day2025}. We
-regard this as the most important single extension of the work.
+\textbf{External validity.} All within-dataset results use a single corpus,
+CSIC~2010, in its deduplicated tabular form, and we additionally report one
+zero-shot cross-dataset test, training on CSIC and testing on
+SR-BH~2020~\cite{srbh2020} without further fine-tuning
+(Section~\ref{sec:crossdataset}); we did not fine-tune a fresh model on SR-BH
+itself, nor test the reverse direction, so the cross-dataset claim is limited
+to one corpus pair and one transfer direction. A more complete protocol would
+add a second independent corpus such as ECML/PKDD~2007~\cite{pkdd2007} or a
+recent production capture~\cite{modsec30day2025}, fine-tune on each corpus in
+turn, and test both directions; we regard this as the most important
+remaining extension of the work, though the single direction we do report is
+already sufficient to show that model-only detection does not survive a
+distribution shift that the hybrid tolerates.
 
 \textbf{Construct validity.} Per-attack-class labels are assigned heuristically
 from payload keywords, so the class breakdown in Fig.~\ref{fig:perclass} is
@@ -975,8 +1058,12 @@ transformer share preprocessing and splits, which controls for those factors.
 
 \textbf{Adversarial scope.} The six mutation families are semantics-preserving but
 not exhaustive; a search-based or learning-based adversary~\cite{advsqli2024}
-could be stronger, and the $0\%$ evasion figure should be read as robustness
-against these common transformations rather than a general guarantee.
+could be stronger, and the $0\%$ evasion figure---achieved by \emph{both} the
+hybrid and the model alone---should be read as robustness against these
+common transformations specifically, not a general adversarial-robustness
+guarantee, and in particular not as evidence that the rule layer improves
+robustness, since it did not differentiate the two configurations on this
+test.
 
 %=======================================================================
 \section{Conclusion}
@@ -984,24 +1071,29 @@ against these common transformations rather than a general guarantee.
 We presented a web application firewall that places a fine-tuned transformer in a
 transparent inline enforcement path and governs it with a layered rule--model
 policy, and---unlike the offline transformer-WAF literature---characterised it end
-to end. On CSIC~2010 the transformer detector reaches F1~$0.968$ at a $4.6\%$
-false-positive rate with $11.7$~ms median GPU inference, outperforming a
+to end. On CSIC~2010 the transformer detector reaches F1~$0.966$ at a $4.4\%$
+false-positive rate with $12.0$~ms median GPU inference, outperforming a
 signature rule engine ($0.567$ F1) and matching a strong TF--IDF baseline at lower
-FPR. Layering the rules with the model yields complete resistance to six
-semantics-preserving evasion families ($0\%$ evasion) at the cost of a higher
-benign false-positive rate---an explicit accuracy--robustness trade-off that also
-re-exhibits the rule brittleness motivating learned detection. Rather than an
-unqualified accuracy claim, the contribution is a measured account of what it
-costs to run a transformer inline as a firewall. Future work includes a
-cross-dataset generalisation study, comparison of BERT with SecureBERT and
-distilled encoders, distillation and quantisation for CPU-class latency, calibrated
-(non-disjunctive) fusion to control false positives, request-body and response
-inspection, and verified online adaptation. Two of these are already in
-progress at the time of writing: a cross-dataset protocol evaluating transfer
-in both directions between CSIC~2010 and a second corpus, and a real
-end-to-end latency measurement through the live Nginx/\texttt{auth\_request}
-stack rather than the offline GPU figure reported here, which will let us
-separate model-inference cost from proxy and network overhead in the
+FPR. We set out to justify the rule layer's benign-traffic cost through
+adversarial-evasion resistance, and the data did not support that story: the
+model alone matched the hybrid's $0\%$ evasion across six semantics-preserving
+mutation families, so this test does not differentiate the two configurations.
+The rule layer's justification instead came from a result we did not originally
+plan to lead with: evaluated zero-shot on an independent corpus, SR-BH~2020, the
+model alone collapses to a $100\%$ false-positive rate while the hybrid holds at
+F1~$0.971$. Reporting the finding that overturned our own initial hypothesis, and
+the one that replaced it, is itself the paper's central methodological
+contribution---a measured account of what running a transformer inline as a
+firewall actually costs and buys, rather than an unqualified accuracy claim or a
+robustness claim assembled to fit the architecture we started with. Future work
+includes extending the cross-dataset protocol to a second independent corpus and
+the reverse transfer direction, comparison of BERT with SecureBERT and distilled
+encoders (for which the training harness is already configured), distillation and
+quantisation for CPU-class latency, calibrated (non-disjunctive) fusion to control
+false positives, request-body and response inspection, verified online
+adaptation, and a real end-to-end latency measurement through the live
+Nginx/\texttt{auth\_request} stack rather than the offline GPU figure reported
+here, to separate model-inference cost from proxy and network overhead in the
 deployed system.
 
 %=======================================================================
