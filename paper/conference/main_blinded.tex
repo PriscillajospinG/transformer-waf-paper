@@ -12,6 +12,7 @@
 \documentclass[conference]{IEEEtran}
 \IEEEoverridecommandlockouts
 
+\usepackage{cite}
 \usepackage{amsmath,amssymb}
 \usepackage{graphicx}
 \usepackage{booktabs}
@@ -22,7 +23,7 @@
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.17}
 \usepackage{algorithm}
-\usepackage{algpseudocode}
+\usepackage{algorithmic}
 \usepackage[hidelinks]{hyperref}
 
 \newcommand{\ph}[1]{{\color{red}\textbf{[#1]}}}
@@ -39,23 +40,27 @@ with Inline Blocking and False-Positive-Controlled Fusion}
 \maketitle
 
 \begin{abstract}
-Signature-based web application firewalls (WAFs) are brittle against obfuscation,
-while transformer-based detectors report near-perfect offline accuracy yet are
-seldom deployed inline, leave latency unmeasured, and ignore the cost of false
-positives. We present a WAF that places a fine-tuned transformer in a transparent
-inline enforcement path built on Nginx \texttt{auth\_request}, adjudicated by a
-four-tier rule--model policy, and evaluate it end to end on CSIC~2010. The
-fine-tuned BERT detector attains F1~$0.966$ at a $4.4\%$ false-positive rate and
-$0.986$ ROC--AUC with $12.0$~ms median GPU inference, outperforming a signature
-rule engine ($0.567$ F1) and matching a strong TF--IDF baseline at a lower
-false-positive rate. Both the model alone and the rule-augmented hybrid resist
-all six semantics-preserving evasion families we test (0\% evasion each), so
-adversarial evasion alone does not justify the hybrid's higher benign
-false-positive rate ($23.1\%$ vs.\ $4.4\%$); instead, evaluated zero-shot on an
-independent corpus (SR-BH~2020), the model alone collapses (FPR~$1.00$) while
-the hybrid recovers to F1~$0.971$---an explicit, measured
-accuracy--robustness--generalisation trade-off rather than an unqualified
-accuracy claim.
+Most web application firewalls still lean on signature matching, and that
+approach breaks down fast against obfuscated payloads. Transformer-based
+detectors have been proposed as a replacement and look impressive on paper,
+but the papers reporting those numbers almost never place the model inline,
+measure its latency, or ask what it costs in false positives. This paper
+does. We built a WAF that runs a fine-tuned transformer inside a real Nginx
+\texttt{auth\_request} enforcement path, governed by a four-tier
+rule--model fusion policy, and tested the whole system end to end on
+CSIC~2010. The BERT detector alone reaches F1~$0.966$ at a $4.4\%$
+false-positive rate (ROC--AUC~$0.986$), which beats a signature engine
+outright ($0.567$ F1) and edges past a strong TF--IDF baseline while adding
+only $12.0$~ms of median GPU inference latency. Here is the part we did not
+expect: both the model alone and the full rule-plus-model hybrid survive all
+six semantics-preserving evasion techniques we tried---$0\%$ evasion either
+way. That means adversarial mutation is not what justifies the hybrid's
+higher false-positive rate ($23.1\%$ vs.\ $4.4\%$). What does justify it
+only shows up once you leave the training distribution: tested zero-shot on
+an unrelated corpus, SR-BH~2020, the model alone collapses to FPR~$1.00$,
+while the hybrid still holds at F1~$0.971$. We report this as it
+happened---an accuracy, robustness, and generalisation trade-off, not a
+clean win for either design.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -63,56 +68,61 @@ web application firewall, transformer, BERT, inline enforcement, decision fusion
 \end{IEEEkeywords}
 
 \section{Introduction}
-Web applications remain a primary attack surface, and injection-style attacks---SQL
-injection, cross-site scripting, path traversal, and command injection---continue
-to dominate the OWASP Top Ten. The web application firewall (WAF) is the standard
-mitigation: an intermediary that inspects incoming HTTP requests and blocks those
-judged malicious before they reach the origin application. Production WAFs have
-relied for two decades on signatures and regular expressions, exemplified by
-ModSecurity with the OWASP Core Rule Set~\cite{owaspcrs}. Such rule sets are fast,
-auditable, and deterministic, but they match surface syntax rather than intent: an
-attacker who inserts an inline comment, alternates character case, or applies
-successive URL encodings can express a functionally identical payload that no
-longer matches the rule set, while operators who tighten rules to catch such
-variants pay in false positives on legitimate traffic. Modern applications built
-around single-page front ends and continuous polling make this tuning burden
-worse, since the volume of unusual-but-benign request shapes grows.
+Web applications are still the easiest way in. SQL injection, cross-site
+scripting, path traversal, and command injection keep showing up at the top
+of the OWASP Top Ten year after year, and the standard defence against them
+is a web application firewall (WAF): an intermediary sitting in front of the
+application, inspecting every request, and blocking whatever looks
+malicious before it reaches the backend. For two decades that inspection has
+mostly meant signatures and regular expressions---ModSecurity paired with
+the OWASP Core Rule Set~\cite{owaspcrs} is the obvious example. Rule sets
+like this are fast, auditable, and easy to reason about, but their weakness
+is that they match surface syntax, not intent. Insert an inline comment,
+flip the case of a few characters, chain a couple of URL encodings, and a
+payload that means exactly the same thing to the backend no longer matches
+the rule. Tighten the rules to catch that and you start blocking legitimate
+users instead. Modern applications built around single-page front ends and
+constant background polling only make this worse, since there is simply
+more unusual-but-harmless traffic for the rules to misjudge.
 
-Transformer language models~\cite{vaswani2017attention,devlin2019bert} promise to
-close this gap by learning the structure of
-malicious payloads rather than enumerating their spellings, and a substantial
-recent literature reports accuracies above $99\%$ for transformer-based web attack
-classifiers on the CSIC~2010 benchmark~\cite{wadbert2026,liu2024bertlstm}. That
-work, however, almost universally stops at offline classification: a model is
-trained and tested on a static corpus and an accuracy figure is reported, with no
-attention to whether the detector could actually serve as a firewall. Three
-practical questions are left unanswered. First, what latency does transformer
-inference add when it sits in the synchronous path of every request? Second, what
-false-positive rate does the detector impose on legitimate users at a chosen
-operating point, rather than on raw accuracy alone? Third, does layering the
-transformer with existing rule-based detection help or hurt, and at what cost?
+Transformer language models~\cite{vaswani2017attention,devlin2019bert} are
+the obvious next step: instead of enumerating every way an attack payload
+might be spelled, let the model learn what malicious structure actually
+looks like. On paper this works well---recent work reports accuracies above
+$99\%$ for transformer-based web attack classifiers on the CSIC~2010
+benchmark~\cite{wadbert2026,liu2024bertlstm}. But almost all of that work
+stops at offline classification: train on a static corpus, report an
+accuracy figure, done. Whether the detector could actually run as a
+firewall is rarely asked. Three questions in particular go unanswered.
+How much latency does the model add once it sits in the synchronous path of
+every request? What false-positive rate does it impose on real users at a
+chosen operating point, as opposed to a raw accuracy figure that says
+nothing about that cost? And when it is combined with the rule-based
+detection that is already deployed, does that help or hurt, and by how much?
 
-This paper answers those three questions directly by building a WAF in which a
-fine-tuned transformer is a component of a live inline enforcement path, and
-characterising it end to end rather than offline. Our contributions are:
+This paper answers those three questions by building the thing and testing
+it end to end rather than offline: a WAF in which a fine-tuned transformer
+is a working component of a live inline enforcement path. Specifically, we
+contribute:
 \begin{itemize}
-\item a transparent inline architecture that uses Nginx's \texttt{auth\_request}
-mechanism to adjudicate every request before it reaches the backend, with no
-modification to the protected application;
-\item a four-tier decision-fusion policy that layers deterministic signatures and
-anomaly rules with confidence-banded transformer scoring, together with an
-endpoint-aware relaxation and a fail-open safeguard;
-\item an end-to-end empirical evaluation---detection quality and baselines, an
-ablation isolating the rule layer's effect, a threshold-sensitivity analysis,
-measured inline inference latency, and an adversarial-evasion stress test
-comparing the model alone against the hybrid---that reports the operational
-measurements the offline literature omits;
-\item a cross-dataset generalisation test that reveals where the rule layer's
-false-positive cost is actually repaid: not adversarial evasion, where the
-model alone already matches the hybrid, but zero-shot transfer to an
-independent corpus, where the model alone collapses and the hybrid does not,
-giving an explicit accuracy--robustness--generalisation trade-off rather than
-an unqualified accuracy claim.
+\item a transparent inline architecture built on Nginx's
+\texttt{auth\_request} mechanism, adjudicating every request before it
+reaches the backend without any modification to the protected application;
+\item a four-tier decision-fusion policy that combines deterministic
+signatures and anomaly rules with confidence-banded transformer scoring,
+together with an endpoint-aware relaxation rule and a fail-open safeguard;
+\item a full empirical evaluation---detection quality against baselines, an
+ablation isolating what the rule layer actually contributes, a
+threshold-sensitivity sweep, measured inline inference latency, and an
+adversarial-evasion test comparing the model alone against the
+hybrid---covering exactly the operational measurements the offline
+literature tends to skip;
+\item a cross-dataset generalisation test showing where the rule layer's
+false-positive cost is actually earned back. It is not adversarial evasion,
+where the model alone already matches the hybrid; it is zero-shot transfer
+to an unfamiliar corpus, where the model alone falls apart and the hybrid
+does not, giving an explicit accuracy--robustness--generalisation
+trade-off rather than an unqualified accuracy claim.
 \end{itemize}
 
 \section{Related Work}
@@ -245,16 +255,18 @@ assumption we cannot check.
 \caption{Decision fusion (Tier 4)}
 \label{alg:fusion}
 \begin{algorithmic}[1]
-\Require $(\text{method},\text{uri})$, model score $p$, $\tau_h{=}0.98$, $\tau_\ell{=}0.90$
-\State $u \gets \text{doubleDecode}(\text{uri})$
-\If{$\text{directSignature}(u)$} \Return \textsc{block} \EndIf
-\State $s \gets \text{ruleSignals}(u)$
-\If{$(s.\text{keyword} \wedge s.\text{injection}) \vee s.\text{encoding}$}
-   \Return \textsc{block} \EndIf
-\If{$p > \tau_h \wedge s.\text{hasSignal}$} \Return \textsc{block} \EndIf
-\If{$\tau_\ell \le p < \tau_h \wedge (s.\text{keyword} \vee s.\text{charAnom})$}
-   \Return \textsc{block} \EndIf
-\State \Return \textsc{allow}
+\REQUIRE $(\text{method},\text{uri})$, model score $p$, $\tau_h{=}0.98$, $\tau_\ell{=}0.90$
+\STATE $u \gets \text{doubleDecode}(\text{uri})$
+\IF{$\text{directSignature}(u)$} \STATE \textbf{return} \textsc{block} \ENDIF
+\STATE $s \gets \text{ruleSignals}(u)$
+\IF{$(s.\text{keyword} \wedge s.\text{injection}) \vee s.\text{encoding}$}
+   \STATE \textbf{return} \textsc{block}
+\ENDIF
+\IF{$p > \tau_h \wedge s.\text{hasSignal}$} \STATE \textbf{return} \textsc{block} \ENDIF
+\IF{$\tau_\ell \le p < \tau_h \wedge (s.\text{keyword} \vee s.\text{charAnom})$}
+   \STATE \textbf{return} \textsc{block}
+\ENDIF
+\STATE \textbf{return} \textsc{allow}
 \end{algorithmic}
 \end{algorithm}
 
@@ -482,50 +494,53 @@ CSIC $\to$ SR-BH (hybrid) & 0.999 & 0.944 & \textbf{0.971} & 0.001 & 0.859 \\
 \end{table}
 
 \section{Discussion}
-The central finding is a trade-off, but not the one we initially expected.
-The transformer alone is the best detector by every accuracy metric
-\emph{and} resists the six mutation families we test just as well as the
-hybrid does---so, on this evidence, adversarial-mutation robustness does not
-justify the rule layer's false-positive cost. What does is distribution
-shift: the model alone collapses on an independent corpus it was never
-trained on (FPR~$1.00$ on SR-BH~2020), while the hybrid recovers to
-F1~$0.971$ on the same zero-shot test. The rule layer's cost on CSIC~2010 is
-real (FPR rises from $4.4\%$ to $23.1\%$), but so is its benefit, and the
-benefit only shows up once you leave the training distribution---a benchmark
-whose evaluation stays within one corpus cannot see it. A practical
-deployment should therefore weigh the rule layer's within-corpus
-false-positive cost against its cross-corpus recovery, rather than deciding
-on adversarial-evasion evidence alone. That signatures tuned for one
-application misfire on another ($20.9\%$ FPR for rules-only on CSIC~2010) is
-itself the rule brittleness that motivates learned detection in the first
-place; the cross-dataset result shows the reverse failure mode is just as
-real for the model alone. Our $0.966$ F1 is below the $>$99\% figures
-reported elsewhere on CSIC~2010~\cite{wadbert2026,scireports2024novelxsssqli};
-we deduplicate the templated benign traffic before splitting to prevent
-near-duplicate leakage between train and test, which we believe accounts for
-most of the gap and makes our figure a stricter estimate rather than a
-weaker model. Limitations: the cross-dataset test is one corpus in one
-direction (SR-BH-trained transfer back to CSIC is not yet run), a single
-fine-tuning run, and a non-exhaustive set of evasions. On scope, the detector
-inspects the request line and, where available, the request body; response
-traffic is not analysed, so we make no claim about detecting data exfiltration.
-The fail-open safeguard trades security for availability and its activation rate
-should be monitored in production. The evaluation code, the rule engine, and the
-preprocessing are shared verbatim between the offline experiments and the
-deployed service, so every reported number is reproducible against the same
-detection logic that runs inline.
+The central finding here is a trade-off, though not the one we set out to
+find. The transformer alone turns out to be the best detector on every
+accuracy metric we measured, and it resists all six mutation families we
+tested just as well as the hybrid does---which was not what we expected
+going in. On this evidence, adversarial-mutation robustness does not
+explain why the hybrid's higher false-positive cost is worth paying. What
+does explain it is distribution shift. Test the model alone on a corpus it
+has never seen, and it collapses: FPR~$1.00$ on SR-BH~2020. Test the hybrid
+on the exact same zero-shot data, and it holds at F1~$0.971$. The rule
+layer's cost on CSIC~2010 is real (FPR climbs from $4.4\%$ to $23.1\%$), but
+so is the benefit, and the benefit is invisible unless the evaluation
+actually leaves the training distribution---a study confined to one corpus
+will never see it. In practice, this means weighing the rule layer's
+within-corpus false-positive cost against what it recovers cross-corpus,
+rather than leaning on adversarial-evasion results alone. There is a
+symmetry worth pointing out here too: the same rule brittleness that
+motivates learned detection in the first place---signatures tuned for one
+application misfiring on another, measured at $20.9\%$ FPR for rules-only on
+CSIC~2010---shows up in reverse for the model, which is just as brittle once
+the traffic distribution shifts. Our F1 of $0.966$ sits below the $>$99\%
+figures reported elsewhere on
+CSIC~2010~\cite{wadbert2026,scireports2024novelxsssqli}; we suspect this is
+mostly because we deduplicate templated benign traffic before splitting,
+which prevents near-duplicate leakage between train and test and gives a
+stricter estimate rather than a weaker model. A few limitations are worth
+naming directly. The cross-dataset test only runs in one direction---we have
+not yet trained on SR-BH and tested back on CSIC---it comes from a single
+fine-tuning run, and the six evasion families we tried are not exhaustive.
+On scope, the detector only looks at the request line and, where present,
+the body; it does not inspect responses, so we make no claim about catching
+data exfiltration. The fail-open safeguard trades security for availability,
+and its activation rate needs to be watched in production. Because the
+evaluation code, rule engine, and preprocessing are shared verbatim with the
+deployed service, every number reported here is reproducible against the
+exact logic running inline.
 
-The latency figure in Table~\ref{tab:latency} is a GPU number; it does not
-imply the system requires a GPU in production. A single Tesla~T4 is shared
-across all inline requests in our test, and the same fine-tuned
-\texttt{bert-base-uncased} checkpoint runs on CPU with correspondingly higher
-per-request latency, which is why the training harness also supports
-DistilBERT as a lighter drop-in encoder for CPU-only or cost-constrained
-deployments; we have not yet benchmarked that configuration end to end, so we
-report it as an available option rather than a validated result. The memory
-footprint of the loaded model (a few hundred megabytes for
-\texttt{bert-base-uncased}) is modest relative to typical reverse-proxy
-sizing and is not, on its own, a deployment obstacle.
+One caveat on the latency figure in Table~\ref{tab:latency}: it is a GPU
+number, and that does not mean the system needs a GPU to run. A single
+Tesla~T4 handles every inline request in our test, but the same fine-tuned
+\texttt{bert-base-uncased} checkpoint also runs on CPU, just slower per
+request---which is exactly why the training harness treats the encoder as
+swappable and already supports DistilBERT as a lighter drop-in option for
+CPU-only or cost-constrained deployments. We have not benchmarked that
+configuration end to end yet, so it remains an available option here rather
+than a validated result. Memory-wise, the loaded model takes up a few
+hundred megabytes, which is small next to typical reverse-proxy sizing and
+not, by itself, a reason to rule out deployment.
 
 \section{Threats to Validity}
 \textbf{Internal.} All results come from a single fine-tuning run and a
@@ -544,24 +559,28 @@ evidence of robustness to that mutation family, not a general
 adversarial-robustness guarantee.
 
 \section{Conclusion}
-We built a deployable hybrid rule--transformer WAF with inline
-\texttt{auth\_request} enforcement and evaluated it end to end rather than
-offline. On CSIC~2010 the transformer reaches F1~$0.966$ at $4.4\%$ FPR with
-$12.0$~ms median inference; layering rules costs precision within-corpus
-(F1~$0.861$, FPR~$23.1\%$) but is not repaid by adversarial-mutation
-resistance, since the model alone already resists the six mutation families
-we test. It is repaid by cross-dataset generalisation instead: zero-shot on
-an independent corpus, the model alone collapses (FPR~$1.00$) while the
-hybrid recovers to F1~$0.971$. The result we consider most useful to
-practitioners is this reordering itself: the rule layer's value is not where
-the offline literature usually looks (adversarial mutation of known attacks)
-but where it rarely looks at all (distribution shift to unfamiliar traffic),
-and a real deployment has to weigh that specific trade-off rather than
-assume the transformer alone is sufficient because it resists mutation
-tests. Future work: the reverse cross-dataset direction and additional
-corpora, a CPU-only latency benchmark using a distilled encoder, calibrated
-(rather than either/or) fusion of rule and model signals, and adversarial
-training against the mutation families evaluated here.
+We set out to build a WAF that puts a fine-tuned transformer inline through
+Nginx's \texttt{auth\_request} mechanism and to actually measure what that
+costs, rather than reporting an offline accuracy number and stopping there.
+On CSIC~2010, the transformer reaches F1~$0.966$ at a $4.4\%$ false-positive
+rate with $12.0$~ms median inference. Adding the rule layer costs precision
+within-corpus---F1 drops to $0.861$, FPR climbs to $23.1\%$---and, contrary
+to what we expected, that cost is not repaid by better resistance to
+adversarial mutation, since the model alone already resists the same six
+mutation families on its own. It is repaid by generalisation instead: tested
+zero-shot on an independent corpus, the model alone collapses to FPR~$1.00$
+while the hybrid holds at F1~$0.971$. If there is one thing worth taking
+from this paper, it is that reordering: the rule layer earns its keep not
+where the offline literature usually looks---adversarial mutation of known
+attacks---but where that literature almost never looks at all, which is
+distribution shift to traffic the model has never seen. A real deployment
+needs to weigh that specific trade-off rather than assume the transformer is
+sufficient on its own just because it survives mutation testing. What we
+would do next: run the cross-dataset test in the other direction and
+against additional corpora, benchmark a distilled encoder for CPU-only
+deployment, try calibrated fusion instead of the current either/or rule,
+and test adversarial training against the same mutation families evaluated
+here.
 
 \section*{Statement on the Use of AI-Assisted Tools}
 Portions of this manuscript's prose --- background synthesis, drafting, and
