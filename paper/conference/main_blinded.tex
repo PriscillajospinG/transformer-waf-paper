@@ -23,6 +23,7 @@
 
 \usepackage{cite}
 \usepackage{amsmath,amssymb}
+\usepackage{mathptmx}
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{url}
@@ -54,8 +55,8 @@ approach breaks down fast against obfuscated payloads. Transformer-based
 detectors have been proposed as a replacement and look impressive on paper,
 but the papers reporting those numbers almost never place the model inline,
 measure its latency, or ask what it costs in false positives. This paper
-does. We built a WAF that runs a fine-tuned transformer inside a real Nginx
-\texttt{auth\_request} enforcement path, governed by a four-tier
+does. We built a WAF that runs a fine-tuned transformer inside a real
+Nginx sub-request based enforcement path, governed by a four-tier
 rule--model fusion policy, and tested the whole system end to end on
 CSIC~2010. The BERT detector alone reaches F1~$0.966$ at a $4.4\%$
 false-positive rate (ROC--AUC~$0.986$), which beats a signature engine
@@ -114,8 +115,8 @@ it end to end rather than offline: a WAF in which a fine-tuned transformer
 is a working component of a live inline enforcement path. Specifically, we
 contribute:
 \begin{itemize}
-\item a transparent inline architecture built on Nginx's
-\texttt{auth\_request} mechanism, adjudicating every request before it
+\item a transparent inline architecture built on Nginx's sub-request
+based authorization mechanism, adjudicating every request before it
 reaches the backend without any modification to the protected application;
 \item a four-tier decision-fusion policy that combines deterministic
 signatures and anomaly rules with confidence-banded transformer scoring,
@@ -215,9 +216,9 @@ AdvSQLi~\cite{advsqli2024} & 2024 & Adv. SQLi & Attack; robustness open \\
 The WAF runs as a reverse proxy split across three containers: an Nginx edge
 proxy, a detection service that holds both the rules and the transformer,
 and the backend application itself, left completely unmodified
-(Fig.~\ref{fig:arch}). Nginx's \texttt{auth\_request} directive turns every
-incoming request into an internal sub-request sent to the detection
-service, which answers with either \texttt{200} (allow) or \texttt{403}
+(Fig.~\ref{fig:arch}). Nginx's sub-request based authorization mechanism
+turns every incoming request into an internal sub-request sent to the
+detection service, which answers with either \texttt{200} (allow) or \texttt{403}
 (block). Because enforcement happens inline, nothing reaches the backend
 before this adjudication happens. Inside the detection service, four tiers
 run in sequence: unambiguous signatures checked after double URL-decoding,
@@ -263,7 +264,7 @@ rather than something we can only assume.
               minimum width=17mm,font=\scriptsize},
   every edge/.style={draw,-{Latex[length=1.8mm]}}]
   \node[box] (client) {Client};
-  \node[box,right=of client] (nginx) {Nginx\\\texttt{auth\_request}};
+  \node[box,right=of client] (nginx) {Nginx\\sub-request auth};
   \node[box,below=of nginx] (waf) {Rules +\\transformer};
   \node[box,right=of nginx] (app) {Backend};
   \draw (client) edge (nginx);
@@ -271,7 +272,7 @@ rather than something we can only assume.
   \draw (waf.east) edge[bend right=25] node[right,font=\tiny]{200/403} (nginx.south east);
   \draw (nginx) edge node[above,font=\tiny]{if 200} (app);
 \end{tikzpicture}
-\caption{Inline enforcement via \texttt{auth\_request}.}
+\caption{Inline enforcement via Nginx's sub-request based authorization mechanism.}
 \label{fig:arch}
 \end{figure}
 
@@ -599,9 +600,10 @@ evidence of robustness to that mutation family, not a general
 adversarial-robustness guarantee.
 
 \section{Conclusion}
-We set out to build a WAF that puts a fine-tuned transformer inline through
-Nginx's \texttt{auth\_request} mechanism and to actually measure what that
-costs, rather than reporting an offline accuracy number and stopping there.
+We set out to build a WAF that puts a fine-tuned transformer inline
+through Nginx's sub-request based authorization mechanism and to
+actually measure what that costs, rather than reporting an offline
+accuracy number and stopping there.
 On CSIC~2010, the transformer reaches F1~$0.966$ at a $4.4\%$ false-positive
 rate with $12.0$~ms median inference. Adding the rule layer costs precision
 within-corpus---F1 drops to $0.861$, FPR climbs to $23.1\%$---and, contrary
@@ -623,13 +625,12 @@ and test adversarial training against the same mutation families evaluated
 here.
 
 \section*{Statement on the Use of AI-Assisted Tools}
-Portions of this manuscript's prose --- background synthesis, drafting, and
-editing --- were produced with the assistance of an AI language model
-(Claude, Anthropic). The experimental design, implementation, execution,
-and all reported results are the authors' own work; the authors reviewed,
-verified, and take full responsibility for the accuracy and integrity of
-the final text and all claims herein, consistent with this venue's policy
-on AI-generated content.
+AI-based writing and coding assistance tools were used during the
+preparation of this manuscript and the accompanying experimental
+pipeline, for tasks including drafting and revising prose, restructuring
+code, and debugging. All experimental results, figures, and tables
+reflect the authors' own experiments; the authors take full
+responsibility for the accuracy and integrity of the content presented.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}
