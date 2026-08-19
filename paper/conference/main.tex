@@ -18,7 +18,7 @@
 \usepackage{url}
 \usepackage[table]{xcolor}
 \usepackage{tikz}
-\usetikzlibrary{shapes.geometric,arrows.meta,positioning}
+\usetikzlibrary{shapes.geometric,arrows.meta,positioning,fit,backgrounds,calc}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.17}
 \usepackage{algorithm}
@@ -269,20 +269,41 @@ rather than something we can only assume.
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}[
-  node distance=5mm and 8mm,
-  box/.style={draw,rounded corners,align=center,minimum height=7mm,
-              minimum width=17mm,font=\scriptsize},
-  every edge/.style={draw,-{Latex[length=1.8mm]}}]
+  node distance=3mm and 5mm,
+  box/.style={draw,rounded corners,align=center,minimum height=6mm,
+              minimum width=15mm,font=\tiny,fill=gray!8},
+  tier/.style={draw,rounded corners,align=center,minimum height=5mm,
+              minimum width=24mm,font=\tiny,fill=blue!6},
+  container/.style={draw,dashed,rounded corners,inner sep=2mm},
+  clabel/.style={font=\tiny,align=center},
+  every edge/.style={draw,-{Latex[length=1.4mm]}}]
+
   \node[box] (client) {Client};
-  \node[box,right=of client] (nginx) {Nginx\\sub-request auth};
-  \node[box,below=of nginx] (waf) {Rules +\\transformer};
-  \node[box,right=of nginx] (app) {Backend};
+  \node[box,above right=2mm and 18mm of client] (nginx) {Nginx};
+  \node[tier,below=16mm of nginx] (t1) {Tier 1: direct signatures};
+  \node[tier,below=of t1] (t2) {Tier 2: anomaly / injection rules};
+  \node[tier,below=of t2] (t3) {Tier 3: transformer scoring};
+  \node[tier,below=of t3] (t4) {Tier 4: decision fusion};
+  \node[box,above right=2mm and 18mm of t1] (app) {Backend\\(unmodified)};
+
+  \node[container,fit=(t1)(t2)(t3)(t4),label={[font=\tiny]above:Detection service (container)}] (detbox) {};
+  \node[container,fit=(nginx),label={[font=\tiny]above:Edge proxy}] {};
+  \node[container,fit=(app),label={[font=\tiny]above:Backend (container)}] {};
+
+  \coordinate (retpoint) at ($(detbox.east)+(6mm,0)$);
+
   \draw (client) edge (nginx);
-  \draw (nginx.south) edge[bend right=15] node[left,font=\tiny]{sub-req} (waf.north);
-  \draw (waf.east) edge[bend right=25] node[right,font=\tiny]{200/403} (nginx.south east);
+  \draw (nginx.south) edge[bend right=8] node[right,font=\tiny,xshift=1mm]{sub-req} (t1.north west);
+  \draw (t1) edge (t2);
+  \draw (t2) edge (t3);
+  \draw (t3) edge (t4);
+  \draw[-{Latex[length=1.4mm]}] (t4.east) -- (retpoint) |- node[right,font=\tiny,pos=0.02]{200 / 403} (nginx.east);
   \draw (nginx) edge node[above,font=\tiny]{if 200} (app);
 \end{tikzpicture}
-\caption{Inline enforcement via Nginx's sub-request based authorization mechanism.}
+\caption{Inline enforcement via Nginx's sub-request based authorization
+mechanism: the edge proxy issues an internal sub-request to the
+detection service, whose four tiers run in sequence before a
+block/allow verdict is returned.}
 \label{fig:arch}
 \end{figure}
 
@@ -609,26 +630,6 @@ configuration end to end yet, so it remains an available option here rather
 than a validated result. Memory-wise, the loaded model takes up a few
 hundred megabytes, which is small next to typical reverse-proxy sizing and
 not, by itself, a reason to rule out deployment.
-
-\section{Threats to Validity}
-\textbf{Internal.} All results come from a single fine-tuning run and a
-single train/validation/test split (seed~$42$); we do not yet report
-variance across seeds, so point estimates should be read with that caveat.
-\textbf{Construct.} FPR and F1 on a held-out split are proxies for
-operational cost and are only as good as the label quality of CSIC~2010 and
-SR-BH~2020 themselves, neither of which we re-annotated. \textbf{External.}
-The cross-dataset test covers one direction (CSIC-trained, SR-BH-tested);
-the reverse direction, along with additional corpora with different
-traffic and attack distributions, remains future work. One concrete
-candidate is a newly released real-world dataset of production
-ModSecurity audit logs~\cite{modsec30day2025}, which unlike CSIC~2010 and
-SR-BH~2020 was not synthetically generated. We have not yet evaluated
-against it, so the generalisation result reported here, while real,
-should not be read as covering all distribution shift.
-\textbf{Adversarial scope.} The six mutation families we test are
-representative, not exhaustive; a $0\%$ evasion rate against them is
-evidence of robustness to that mutation family, not a general
-adversarial-robustness guarantee.
 
 \section{Conclusion}
 We set out to build a WAF that puts a fine-tuned transformer inline
