@@ -346,7 +346,38 @@ and $f(x)=1$ denotes \textsc{block}. Discarding the rule-dependent cases
 recovers the model-only decision $\hat y(x)$ used for the ``BERT (model
 only)'' row of Table~\ref{tab:main}, while discarding the model-dependent
 cases recovers the rules-only decision used for that table's ``Rules
-only'' row.
+only'' row. Fig.~\ref{fig:flowchart} lays the same four cases out as a
+decision flowchart, which is easier to trace by eye than either the
+pseudocode or Eq.~\eqref{eq:fusion} alone.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  node distance=4mm and 6mm,
+  dec/.style={draw,diamond,aspect=2.4,align=center,font=\tiny,inner sep=1pt},
+  term/.style={draw,rounded corners,align=center,font=\tiny,minimum width=13mm,minimum height=5mm},
+  every edge/.style={draw,-{Latex[length=1.3mm]}}]
+  \node[dec] (d1) {$s_{\text{dir}}=1$?};
+  \node[dec,below=of d1] (d2) {$(s_{\text{kw}}\wedge s_{\text{inj}})$\\$\vee\, s_{\text{enc}}$?};
+  \node[dec,below=of d2] (d3) {$p>\tau_h$\\$\wedge\, s_{\text{has}}$?};
+  \node[dec,below=of d3] (d4) {$\tau_\ell\le p<\tau_h$\\$\wedge\,(s_{\text{kw}}\vee s_{\text{ca}})$?};
+  \node[term,right=14mm of d1] (b1) {\textsc{block}};
+  \node[term,right=14mm of d2] (b2) {\textsc{block}};
+  \node[term,right=14mm of d3] (b3) {\textsc{block}};
+  \node[term,right=14mm of d4] (b4) {\textsc{block}};
+  \node[term,below=6mm of d4] (allow) {\textsc{allow}};
+  \draw (d1) edge node[above,font=\tiny]{yes} (b1);
+  \draw (d1) edge node[left,font=\tiny]{no} (d2);
+  \draw (d2) edge node[above,font=\tiny]{yes} (b2);
+  \draw (d2) edge node[left,font=\tiny]{no} (d3);
+  \draw (d3) edge node[above,font=\tiny]{yes} (b3);
+  \draw (d3) edge node[left,font=\tiny]{no} (d4);
+  \draw (d4) edge node[above,font=\tiny]{yes} (b4);
+  \draw (d4) edge node[left,font=\tiny]{no} (allow);
+\end{tikzpicture}
+\caption{Decision flowchart for Tier 4, equivalent to Algorithm~\ref{alg:fusion} and Eq.~\eqref{eq:fusion}.}
+\label{fig:flowchart}
+\end{figure}
 
 \section{Methodology and Setup}
 
@@ -450,8 +481,18 @@ F_1=\frac{2PR}{P+R}, \qquad
 \end{equation}
 all evaluated at the decision rule in use (Eq.~\eqref{eq:softmax} at
 $\tau=0.5$ for the model alone, or Eq.~\eqref{eq:fusion} for the
-hybrid), while ROC--AUC integrates true-positive rate against FPR over
-every threshold rather than a single operating point. For baselines, we
+hybrid). Unlike $P$, $R$, $F_1$, and FPR, ROC--AUC is not tied to one
+operating point: writing $\mathrm{TPR}(\tau)=R$ and $\mathrm{FPR}(\tau)$
+for the true- and false-positive rates obtained by thresholding
+$p(x)$ at $\tau$, it is the area under the parametric curve traced out
+as $\tau$ sweeps from $1$ to $0$,
+\begin{equation}
+\mathrm{AUC} = \int_0^1 \mathrm{TPR}\bigl(\mathrm{FPR}^{-1}(t)\bigr)\,dt,
+\label{eq:auc}
+\end{equation}
+which is what makes it a threshold-independent summary of ranking
+quality, in contrast to the other four metrics reported at a single
+$\tau$. For baselines, we
 use the deterministic rule engine on its own (Tiers~1--2) and TF--IDF
 character-$n$-gram features feeding a linear SVM and a random forest.
 Four protocols structure the results:
@@ -477,7 +518,13 @@ $20.9\%$ false-positive rate on this corpus. The hybrid blocks whenever
 \emph{either} the rules or the model fire, and that inherits the rules'
 false positives: F1 drops to $0.861$ and FPR climbs to $0.231$, so on a
 benchmark whose benign traffic the signatures were never calibrated for,
-adding the rule layer actually subtracts accuracy. As
+adding the rule layer actually subtracts accuracy. Fig.~\ref{fig:confmat}
+shows the same shift as a pair of normalized confusion matrices: moving
+from model-only to hybrid costs about $19$ points of true-negative rate
+\emph{and} about $12$ points of recall, since several of Tier~4's block
+conditions require a rule signal on top of a high model score rather
+than firing on either alone, so this is not a precision-for-recall trade
+at all, it is a loss on both axes within this corpus. As
 Section~\ref{sec:crossdataset} shows, though, that is not the full
 picture.
 
@@ -517,8 +564,51 @@ Hybrid (ours)         & 0.885 & 0.837 & 0.861 & 0.231 & 0.986 \\
 \label{fig:bars}
 \end{figure}
 
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  cell/.style={draw,minimum width=15mm,minimum height=8mm,align=center,font=\tiny},
+  lbl/.style={font=\tiny,align=center}]
+  % BERT model-only normalized confusion matrix (TPR=0.953, FPR=0.044)
+  \node[lbl] at (0,1.9) {BERT (model only)};
+  \node[cell,fill=blue!30] at (0,1) {TPR\\$0.953$};
+  \node[cell,fill=blue!5]  at (1.6,1) {FNR\\$0.047$};
+  \node[cell,fill=blue!5]  at (0,-0.1) {FPR\\$0.044$};
+  \node[cell,fill=blue!30] at (1.6,-0.1) {TNR\\$0.956$};
+  \node[lbl] at (-1.0,1) {Actual mal.};
+  \node[lbl] at (-1.0,-0.1) {Actual ben.};
+  \node[lbl] at (0,1.55) {Pred.\ mal.};
+  \node[lbl] at (1.6,1.55) {Pred.\ ben.};
+
+  % Hybrid normalized confusion matrix (TPR=0.837, FPR=0.231)
+  \node[lbl] at (4.2,1.9) {Hybrid (ours)};
+  \node[cell,fill=blue!30] at (4.2,1) {TPR\\$0.837$};
+  \node[cell,fill=blue!5]  at (5.8,1) {FNR\\$0.163$};
+  \node[cell,fill=blue!5]  at (4.2,-0.1) {FPR\\$0.231$};
+  \node[cell,fill=blue!30] at (5.8,-0.1) {TNR\\$0.769$};
+  \node[lbl] at (4.2,1.55) {Pred.\ mal.};
+  \node[lbl] at (5.8,1.55) {Pred.\ ben.};
+\end{tikzpicture}
+\caption{Normalized confusion matrices (rates, not counts) for the
+model-only and hybrid configurations on the CSIC~2010 test split,
+derived from the P/R/FPR values in Table~\ref{tab:main} via
+$\mathrm{TNR}=1-\mathrm{FPR}$ and $\mathrm{FNR}=1-R$.}
+\label{fig:confmat}
+\end{figure}
+
 \subsection{Per-Attack-Class Recall}
-Looking only at malicious test requests, the hybrid recalls
+Let $\mathcal{X}_a=\{x : y(x)=1,\ \mathrm{type}(x)=a\}$ be the malicious
+test requests belonging to attack category $a\in\{\text{sqli},
+\text{encoding},\text{other}\}$. Per-class recall is Eq.~\eqref{eq:pr}'s
+$R$ restricted to that subset,
+\begin{equation}
+R_a = \frac{1}{|\mathcal{X}_a|}\sum_{x\in\mathcal{X}_a} \mathbb{1}[f(x)=1],
+\label{eq:perclass}
+\end{equation}
+so that $R=\sum_a |\mathcal{X}_a| R_a / \sum_a |\mathcal{X}_a|$ recovers
+the overall recall in Table~\ref{tab:main} as the size-weighted average
+of the per-class values in Fig.~\ref{fig:perclass}. Looking only at
+malicious test requests, the hybrid recalls
 SQL-injection and encoding-style payloads perfectly ($1.00$ each), with
 the residual ``other'' category trailing at $0.79$
 (Fig.~\ref{fig:perclass}); model-only shows the identical ordering.
@@ -550,11 +640,30 @@ recall for precision by moving the decision threshold: across
 $\tau\in[0.50,0.98]$, recall only drops from $0.953$ to $0.902$ while
 FPR more than halves, from $0.044$ down to $0.018$
 (Fig.~\ref{fig:threshold}). Single-request GPU inference costs a median
-of $12.0$~ms ($p99{=}17.0$~ms, roughly $87$ requests per second per
-process), which is fast enough to sit inline. The adversarial result is
-the one that surprised us: all six semantics-preserving mutations we
-applied to the initially blocked payloads failed to evade \emph{either}
-the model alone or the hybrid: $0\%$ evasion for both
+of $12.0$~ms ($p99{=}17.0$~ms), and throughput follows directly from
+the mean per-request latency $\bar\ell$ (in milliseconds) for a single
+inference process,
+\begin{equation}
+\mathrm{RPS} = \frac{1000}{\bar\ell},
+\label{eq:rps}
+\end{equation}
+giving the $87$ requests per second per process reported in
+Table~\ref{tab:latency}, fast enough to sit inline. For the adversarial
+test, let $B\subset\mathcal{X}_{\text{mal}}$ be the malicious requests
+initially blocked by a given configuration and $m:\text{URI}\to\text{URI}$
+one of the six semantics-preserving mutations; its evasion rate against
+that configuration's decision function $g$ (either $f$ from
+Eq.~\eqref{eq:fusion} or $\hat y$) is
+\begin{equation}
+E_m = \frac{1}{|B|}\sum_{x\in B} \mathbb{1}[g(m(x))=0],
+\label{eq:evasion}
+\end{equation}
+i.e.\ the fraction of originally-blocked payloads that flip to
+\textsc{allow} after mutation, averaged over the six $m$ to give the
+overall figures in Table~\ref{tab:latency}. The result is the one that
+surprised us: all six semantics-preserving mutations we applied to the
+initially blocked payloads failed to evade \emph{either} the model
+alone or the hybrid: $E_m=0$ for both, for every $m$
 (Table~\ref{tab:latency}). That is notably different from the
 model-only ML WAFs that WAF-A-MoLE~\cite{demetrio2020wafamole} and
 AdvSQLi~\cite{advsqli2024} show can be mutated past. On this corpus, a
