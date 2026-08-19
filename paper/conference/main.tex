@@ -204,7 +204,7 @@ Section~\ref{sec:crossdataset} tests.
 
 \begin{table}[t]
 \centering
-\caption{Representative recent work vs.\ this paper.}
+\caption{Representative Recent Work vs.\ This Paper}
 \label{tab:survey}
 \footnotesize
 \begin{tabular}{@{}p{2.2cm}p{0.6cm}p{1.7cm}p{2.2cm}@{}}
@@ -216,7 +216,7 @@ BERT--LSTM~\cite{liu2024bertlstm} & 2024 & BERT+LSTM & Single class; offline \\
 E-WebGuard~\cite{zhou2025ewebguard} & 2025 & Neural arch. & No inline/latency \\
 Payload ML~\cite{payloadml2024svmrfxgb} & 2024 & SVM/RF/XGB & Handcrafted; offline \\
 AdvSQLi~\cite{advsqli2024} & 2024 & Adv. SQLi & Attack; robustness open \\
-\textbf{This work} & -- & Hybrid, inline & --- \\
+This work & -- & Hybrid, inline & --- \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -251,7 +251,7 @@ in the critical path of every request, but it is also a security budget,
 and its activation rate needs to be watched once the system is running
 in production.
 
-\textbf{Threat model.} The attacker we assume is external and
+\emph{Threat model.} The attacker we assume is external and
 unauthenticated, capable of sending arbitrary HTTP requests to the
 protected application, with one of two goals: a successful injection
 attack (SQL injection, cross-site scripting, command injection), or
@@ -308,27 +308,49 @@ block/allow verdict is returned.}
 \end{figure}
 
 \begin{algorithm}[t]
-\caption{Decision fusion (Tier 4)}
+\caption{Decision Fusion (Tier 4)}
 \label{alg:fusion}
 \begin{algorithmic}[1]
 \REQUIRE $(\text{method},\text{uri})$, model score $p$, $\tau_h{=}0.98$, $\tau_\ell{=}0.90$
 \STATE $u \gets \text{doubleDecode}(\text{uri})$
-\IF{$\text{directSignature}(u)$} \STATE \textbf{return} \textsc{block} \ENDIF
+\IF{$\text{directSignature}(u)$} \STATE return \textsc{block} \ENDIF
 \STATE $s \gets \text{ruleSignals}(u)$
 \IF{$(s.\text{keyword} \wedge s.\text{injection}) \vee s.\text{encoding}$}
-   \STATE \textbf{return} \textsc{block}
+   \STATE return \textsc{block}
 \ENDIF
-\IF{$p > \tau_h \wedge s.\text{hasSignal}$} \STATE \textbf{return} \textsc{block} \ENDIF
+\IF{$p > \tau_h \wedge s.\text{hasSignal}$} \STATE return \textsc{block} \ENDIF
 \IF{$\tau_\ell \le p < \tau_h \wedge (s.\text{keyword} \vee s.\text{charAnom})$}
-   \STATE \textbf{return} \textsc{block}
+   \STATE return \textsc{block}
 \ENDIF
-\STATE \textbf{return} \textsc{allow}
+\STATE return \textsc{allow}
 \end{algorithmic}
 \end{algorithm}
 
+Algorithm~\ref{alg:fusion} is equivalent to the closed-form decision rule
+\begin{equation}
+f(x) =
+\begin{cases}
+1, & s_{\text{dir}}(u) = 1, \\[2pt]
+1, & (s_{\text{kw}} \wedge s_{\text{inj}}) \vee s_{\text{enc}}, \\[2pt]
+1, & p(x) > \tau_h \wedge s_{\text{has}}, \\[2pt]
+1, & \tau_\ell \le p(x) < \tau_h \wedge (s_{\text{kw}} \vee s_{\text{ca}}), \\[2pt]
+0, & \text{otherwise},
+\end{cases}
+\label{eq:fusion}
+\end{equation}
+where $u=\text{doubleDecode}(\text{uri})$, $p(x)$ is the model probability
+from Eq.~\eqref{eq:softmax}, $s_{\text{dir}},s_{\text{kw}},s_{\text{inj}},s_{\text{enc}},s_{\text{ca}}\in\{0,1\}$
+are the Tier~1/2 rule signals (direct signature, keyword, injection
+pattern, encoding anomaly, character anomaly), $s_{\text{has}}=s_{\text{kw}}\vee s_{\text{enc}}\vee s_{\text{inj}}\vee s_{\text{ca}}$,
+and $f(x)=1$ denotes \textsc{block}. Discarding the rule-dependent cases
+recovers the model-only decision $\hat y(x)$ used for the ``BERT (model
+only)'' row of Table~\ref{tab:main}, while discarding the model-dependent
+cases recovers the rules-only decision used for that table's ``Rules
+only'' row.
+
 \section{Methodology and Setup}
 
-\subsection{Problem formulation and preprocessing}
+\subsection{Problem Formulation and Preprocessing}
 We treat detection as binary classification over
 $x=\texttt{METHOD}\,\Vert\,\texttt{URI}'$, where $\texttt{URI}'$ is the
 request path and query string after normalisation. Each request goes
@@ -340,7 +362,23 @@ exact preprocessing runs in both the offline evaluation and the deployed
 detection service, so the two are guaranteed to see requests the same
 way.
 
-\subsection{Model and training}
+Formally, let $\phi(x)\in\mathbb{R}^{256}$ denote the WordPiece token
+sequence produced by this preprocessing. The fine-tuned encoder maps
+$\phi(x)$ to a pooled representation $h=\mathrm{BERT}(\phi(x))\in\mathbb{R}^{768}$,
+and a linear classification head followed by a softmax converts $h$ into
+the malicious-class probability used everywhere else in the paper:
+\begin{equation}
+p(x) \;=\; \frac{\exp(w_1^\top h + b_1)}{\exp(w_0^\top h + b_0) + \exp(w_1^\top h + b_1)},
+\label{eq:softmax}
+\end{equation}
+where $w_0,w_1\in\mathbb{R}^{768}$ and $b_0,b_1\in\mathbb{R}$ are the
+head's weights and biases for the benign and malicious classes
+respectively. At the default operating point the model-only decision is
+$\hat y(x) = \mathbb{1}[p(x)\ge 0.5]$; Section~\ref{sec:threshold}
+below instead sweeps this cut-off directly, and Tier~4 (Eq.~\ref{eq:fusion})
+combines $p(x)$ with the rule signals rather than thresholding it alone.
+
+\subsection{Model and Training}
 We fine-tune \texttt{bert-base-uncased}~\cite{devlin2019bert} using
 AdamW, a learning rate of $2{\times}10^{-5}$, batch size $16$, weight
 decay $0.01$, a warmup ratio of $0.1$, three epochs, and early stopping
@@ -354,7 +392,7 @@ these settings without digging through the text.
 
 \begin{table}[t]
 \centering
-\caption{Training configuration and hardware.}
+\caption{Training Configuration and Hardware}
 \label{tab:hyperparams}
 \begin{tabular}{@{}ll@{}}
 \toprule
@@ -376,7 +414,7 @@ Framework & PyTorch 2.11 (CUDA 12.8), \\
 \end{tabular}
 \end{table}
 
-\subsection{Data and splits}
+\subsection{Data and Splits}
 Our evaluation corpus is the CSIC~2010 tabular dataset~\cite{gimenez2010csic}.
 Despite its age, CSIC~2010 remains the most widely used public benchmark
 for this exact attack surface, and recent transformer-based
@@ -393,13 +431,30 @@ split these $70/15/15$, stratified by label with a fixed seed of $42$,
 giving a $1{,}424$-request held-out test set that never touches training
 or model selection.
 
-\subsection{Metrics, baselines, and protocol}
+\subsection{Metrics, Baselines, and Protocol}
 We report precision, recall, F1, false-positive rate (FPR), and
 ROC--AUC, and we lean on FPR in particular because a WAF's real
 operational cost comes from wrongly blocking legitimate users, not from
-raw accuracy. For baselines, we use the deterministic rule engine on its
-own (Tiers~1--2) and TF--IDF character-$n$-gram features feeding a
-linear SVM and a random forest. Four protocols structure the results:
+raw accuracy. Writing $\mathrm{TP}$, $\mathrm{FP}$, $\mathrm{TN}$, and
+$\mathrm{FN}$ for the counts of true/false positives and negatives on the
+held-out test set, the four threshold-dependent metrics are
+\begin{equation}
+P=\frac{\mathrm{TP}}{\mathrm{TP}+\mathrm{FP}}, \qquad
+R=\frac{\mathrm{TP}}{\mathrm{TP}+\mathrm{FN}},
+\label{eq:pr}
+\end{equation}
+\begin{equation}
+F_1=\frac{2PR}{P+R}, \qquad
+\mathrm{FPR}=\frac{\mathrm{FP}}{\mathrm{FP}+\mathrm{TN}},
+\label{eq:f1fpr}
+\end{equation}
+all evaluated at the decision rule in use (Eq.~\eqref{eq:softmax} at
+$\tau=0.5$ for the model alone, or Eq.~\eqref{eq:fusion} for the
+hybrid), while ROC--AUC integrates true-positive rate against FPR over
+every threshold rather than a single operating point. For baselines, we
+use the deterministic rule engine on its own (Tiers~1--2) and TF--IDF
+character-$n$-gram features feeding a linear SVM and a random forest.
+Four protocols structure the results:
 \emph{within-dataset} detection on the CSIC~2010 splits, an
 \emph{ablation} comparing rules-only, model-only, and the full hybrid on
 the same test set, a \emph{threshold-sensitivity} sweep over the model's
@@ -412,7 +467,7 @@ and Hugging Face Transformers~4.x, with all seeds fixed at $42$.
 Every number below comes from the held-out CSIC~2010 test split
 ($n=1{,}424$).
 
-\subsection{Detection and ablation}
+\subsection{Detection and Ablation}
 Table~\ref{tab:main} and Fig.~\ref{fig:bars} lay out detection
 performance. The fine-tuned BERT detector comes out strongest
 (F1~$0.966$, FPR~$0.044$, AUC~$0.986$), just ahead of the TF--IDF SVM on
@@ -428,17 +483,17 @@ picture.
 
 \begin{table}[t]
 \centering
-\caption{Detection and ablation on CSIC 2010 (test). Best per column in bold.}
+\caption{Detection and Ablation on CSIC 2010 (Test)}
 \label{tab:main}
 \begin{tabular}{@{}lccccc@{}}
 \toprule
 Method & P & R & F1 & FPR & AUC \\
 \midrule
 Rules only            & 0.816 & 0.435 & 0.567 & 0.209 & --- \\
-TF--IDF + SVM         & 0.973 & 0.957 & 0.965 & 0.057 & \textbf{0.992} \\
+TF--IDF + SVM         & 0.973 & 0.957 & 0.965 & 0.057 & 0.992 \\
 TF--IDF + RF          & 0.929 & 0.924 & 0.927 & 0.150 & 0.958 \\
-BERT (model only)     & \textbf{0.979} & \textbf{0.953} & \textbf{0.966} & \textbf{0.044} & 0.986 \\
-\textbf{Hybrid (ours)}& 0.885 & 0.837 & 0.861 & 0.231 & 0.986 \\
+BERT (model only)     & 0.979 & 0.953 & 0.966 & 0.044 & 0.986 \\
+Hybrid (ours)         & 0.885 & 0.837 & 0.861 & 0.231 & 0.986 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -462,7 +517,7 @@ BERT (model only)     & \textbf{0.979} & \textbf{0.953} & \textbf{0.966} & \text
 \label{fig:bars}
 \end{figure}
 
-\subsection{Per-attack-class recall}
+\subsection{Per-Attack-Class Recall}
 Looking only at malicious test requests, the hybrid recalls
 SQL-injection and encoding-style payloads perfectly ($1.00$ each), with
 the residual ``other'' category trailing at $0.79$
@@ -488,7 +543,8 @@ an obvious keyword pattern, is the hardest case for both.
 \label{fig:perclass}
 \end{figure}
 
-\subsection{Threshold, latency, and adversarial robustness}
+\subsection{Threshold, Latency, and Adversarial Robustness}
+\label{sec:threshold}
 Because the transformer outputs a probability, an operator can trade
 recall for precision by moving the decision threshold: across
 $\tau\in[0.50,0.98]$, recall only drops from $0.953$ to $0.902$ while
@@ -529,7 +585,7 @@ rate; Section~\ref{sec:crossdataset} gets at what actually does.
 
 \begin{table}[t]
 \centering
-\caption{Inline latency (Tesla T4) and adversarial evasion (6 mutation families).}
+\caption{Inline Latency (Tesla T4) and Adversarial Evasion (6 Mutation Families)}
 \label{tab:latency}
 \begin{tabular}{@{}lcccc@{}}
 \toprule
@@ -541,7 +597,7 @@ Hybrid & --- & --- & --- & 0.00 \\
 \end{tabular}
 \end{table}
 
-\subsection{Cross-dataset generalisation}
+\subsection{Cross-Dataset Generalisation}
 \label{sec:crossdataset}
 Everything above is within-corpus: train and test both come from
 CSIC~2010. To see what happens once the detector meets traffic it has
@@ -567,15 +623,15 @@ without any retraining.
 
 \begin{table}[t]
 \centering
-\caption{Zero-shot cross-dataset transfer: CSIC-trained detector on SR-BH~2020.}
+\caption{Zero-Shot Cross-Dataset Transfer: CSIC-Trained Detector on SR-BH~2020}
 \label{tab:crossdataset}
 \begin{tabular}{@{}lccccc@{}}
 \toprule
 Configuration & P & R & F1 & FPR & AUC \\
 \midrule
 CSIC $\to$ CSIC (reference) & 0.979 & 0.953 & 0.966 & 0.044 & 0.986 \\
-CSIC $\to$ SR-BH (model only) & 0.429 & 1.000 & 0.601 & \textbf{1.000} & 0.859 \\
-CSIC $\to$ SR-BH (hybrid) & 0.999 & 0.944 & \textbf{0.971} & 0.001 & 0.859 \\
+CSIC $\to$ SR-BH (model only) & 0.429 & 1.000 & 0.601 & 1.000 & 0.859 \\
+CSIC $\to$ SR-BH (hybrid) & 0.999 & 0.944 & 0.971 & 0.001 & 0.859 \\
 \bottomrule
 \end{tabular}
 \end{table}
