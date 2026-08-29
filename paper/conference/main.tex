@@ -254,6 +254,19 @@ model's score, and the final verdict. That logging is what actually makes
 the fail-open activation rate and each tier's trigger rate measurable,
 rather than something that can only be assumed.
 
+\emph{Threshold rationale.} The two thresholds that gate Tier~4,
+$\tau_h$ and $\tau_\ell$, are not arbitrary cutoffs but a deliberate
+concession to the fact that a single confidence value cannot carry
+equal weight in every context. Above $\tau_h$ the model is trusted on
+its own only when at least one rule signal is also present, since a
+transformer score by itself, however high, is still a probabilistic
+judgment rather than a guarantee. Between $\tau_\ell$ and $\tau_h$ the
+model is treated as merely suggestive, and a block is issued only when
+a keyword or character-anomaly signal corroborates it; below
+$\tau_\ell$ the model's opinion is discarded entirely and the request
+is allowed unless an earlier tier already fired. Algorithm~\ref{alg:fusion}
+formalises this banding as the Tier~4 decision procedure.
+
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}[
@@ -276,9 +289,9 @@ rather than something that can only be assumed.
 
   \begin{pgfonlayer}{background}
   \node[container,fit=(t1)(t2)(t3)(t4),
-        label={[font=\scriptsize\bfseries]above:Detection Service}] (detbox) {};
-  \node[container,fit=(nginx),label={[font=\scriptsize\bfseries]above:Edge Proxy}] {};
-  \node[container,fit=(backend),label={[font=\scriptsize\bfseries]above:Backend}] {};
+        label={[font=\scriptsize\itshape]above:Detection Service}] (detbox) {};
+  \node[container,fit=(nginx),label={[font=\scriptsize\itshape]above:Edge Proxy}] {};
+  \node[container,fit=(backend),label={[font=\scriptsize\itshape]above:Backend}] {};
   \end{pgfonlayer}
 
   \draw (client) edge node[above,font=\tiny]{HTTP} (nginx);

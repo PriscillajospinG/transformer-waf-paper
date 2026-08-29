@@ -32,7 +32,7 @@
 \title{A Deployable Hybrid Rule--Transformer Web Application Firewall with
 Inline Blocking and False-Positive-Controlled Decision Fusion}
 
-\author{Priscilla~Jospin~G and Rahul~R}
+\author{Priscilla~Jospin~G and Rahul~R\thanks{P.~Jospin~G and R.~R are with the Department of Data Science and Cyber Security, Karunya Institute of Technology and Sciences, Coimbatore, India (e-mail: priscillajosin@gmail.com; rahulr@karunya.edu).}}
 
 \markboth{IEEE/Elsevier Manuscript}%
 {Jospin G \MakeLowercase{\textit{and}} Rahul R: Deployable Hybrid Rule--Transformer WAF}
@@ -116,6 +116,19 @@ ordinary parameter value. A substantial recent literature does exactly this and
 reports accuracies above 99\% on the standard CSIC~2010
 benchmark~\cite{wadbert2026,liu2024bertlstm}.
 
+The economics of the two failure modes are asymmetric in a way that shapes
+everything that follows. A missed attack is a security event whose cost is
+realised rarely but can be unbounded; a false positive is a usability event
+whose cost is small but paid continuously, on every legitimate user wrongly
+blocked, and it compounds into support load, abandoned sessions and,
+eventually, pressure to weaken the control that caused it. A WAF that blocks
+one per cent of benign traffic on a service handling a million requests a
+day generates ten thousand wrongful blocks daily, which no security benefit
+short of certainty survives organisationally. This is why the evaluation in
+this research treats false-positive rate as a first-class metric rather than
+a footnote to accuracy, and why the decision policy at the centre of the
+proposed methodology is built around controlling it.
+
 Yet a gap separates these results from a firewall a practitioner can deploy.
 Almost all of this work stops at offline classification: a model is trained and
 tested on a static corpus, an accuracy is reported, and the analysis ends.
@@ -192,6 +205,22 @@ studies of payload obfuscation show that encoding and comment insertion defeat
 them, and operators trade detection for false positives when hardening the
 rules. These properties make rule sets an indispensable baseline and a natural
 first tier in a layered system, but an insufficient detector on their own.
+The economics of rule maintenance deserve emphasis, because they are the
+recurring cost that learned detection promises to amortise. A production CRS
+deployment is operated at a paranoia level that trades coverage against
+false positives, and every level increase that catches more obfuscation also
+matches more legitimate traffic, obliging operators to write per-application
+exclusion rules whose number grows with the application's surface. Studies
+of rule-set evolution show the corpus of signatures only ever grows, since
+removing a rule risks re-opening a covered attack, and the result is a
+detector whose behaviour on any given application is the intersection of a
+global rule base with a local exclusion list that no one person fully
+understands. That operational reality, not any single accuracy number, is
+the strongest argument for learning the benign distribution from the
+application's own traffic, and it is also why the proposed methodology
+retains signatures only in their highest-precision form, as Tier~1, where
+exclusion-list maintenance is unnecessary because the matched payloads have
+no legitimate reading.
 
 \subsection{Classical machine learning for web attack detection}
 A second line of work extracts features, including $n$-grams, term-frequency
@@ -234,6 +263,26 @@ evaluation is offline: the model is not placed in an enforcement path, latency i
 not reported, and false-positive behaviour at an operating point is not
 analysed.
 
+A second pattern across this group concerns how architectural novelty is
+justified. The BERT--LSTM hybrid, the dual-channel design, and the
+ensemble approaches each add capacity on top of a transformer encoder and
+report an accuracy increment on CSIC-class benchmarks, typically fractions
+of a percentage point over a plain fine-tuned encoder. On a corpus where a
+TF--IDF SVM already reaches the high nineties, such increments sit inside
+the run-to-run variance that Section~\ref{sec:threats} documents for a
+single architecture, and none of the studies reports variance across
+seeds, so the increments cannot be distinguished from noise on the
+published evidence. This is not an argument that the architectures are
+worthless, but it is an argument that the benchmark has saturated: when
+every design from a linear model upward scores above $0.95$, within-corpus
+accuracy has stopped discriminating between them, and the discriminating
+questions are the operational ones, latency, false-positive cost,
+transfer, and evasion, that this group of papers does not ask. That
+observation, more than any individual limitation, is what motivates the
+evaluation design of this research, which holds the architecture fixed at
+the simplest competitive choice, a plain fine-tuned encoder, and spends
+the experimental budget on the axes the literature leaves unmeasured.
+
 \subsection{Compression, latency, datasets and adversarial evasion}
 Because transformer inference is costly, a compression literature distils and
 prunes these models, for example DistilBERT~\cite{sanh2019distilbert} and
@@ -270,6 +319,35 @@ established line showing that machine-learning WAFs can be evaded by
 mutating payloads. Transformer-WAF papers
 nonetheless seldom test evasion, and explainability work on intrusion
 detection~\cite{xai_ids_2025} is likewise rarely integrated into WAF decisions.
+
+\subsection{Datasets and benchmarks}
+The benchmarks this literature rests on deserve scrutiny of their own,
+because dataset choice turns out to explain a good deal of the accuracy
+inflation the research gap below describes. CSIC~2010~\cite{gimenez2010csic}
+remains the de facto standard: an HTTP corpus generated against an e-commerce
+application, with labelled normal and anomalous traffic, small enough to
+fine-tune on in minutes and old enough that every method in
+Table~\ref{tab:survey} can be compared on it. Its central weakness is
+templating. The benign traffic is synthesised from a limited set of request
+patterns instantiated thousands of times with varying parameter values, so
+near-duplicate requests are pervasive; a random split that does not
+deduplicate first lets close variants of the same request appear on both
+sides of the train/test boundary, and a model can then score near-perfectly
+by memorising templates rather than learning anything about attack structure.
+This research deduplicates on the normalised request text before splitting
+precisely to close that leak, and attributes its lower-than-literature F1
+partly to doing so. ECML/PKDD~2007~\cite{pkdd2007} predates CSIC and poses
+the additional difficulty of masked target applications, which is why it sees
+little modern use despite offering a second labelled corpus.
+SR-BH~2020~\cite{srbh2020}, used for the zero-shot transfer evaluation in
+Section~\ref{sec:results}, differs from both in kind rather than degree: it
+is captured real traffic from a production honeypot rather than synthesised
+requests, with the messier request shapes, encodings and crawler noise that
+real deployments see. The scarcity of such corpora is itself a finding of
+the survey: the field's benchmark of choice is two decades removed from the
+traffic modern single-page applications generate, and results obtained on it,
+including the within-corpus results of this research, should be read with
+that gap in mind.
 
 \subsection{Research gap}
 Across these themes the pattern is consistent: transformer detectors are
@@ -326,6 +404,29 @@ block response. Because \texttt{auth\_request} is a native, synchronous Nginx
 mechanism, enforcement is inline and no request reaches the backend until the
 detection service has ruled on it.
 
+This interception choice has consequences worth making explicit, because it
+is what distinguishes the proposed methodology from both of the usual
+alternatives. Embedding the detector in the proxy process itself, the
+ModSecurity model, couples the model runtime to the proxy's lifecycle: a
+model upgrade means reloading the proxy, a model crash can take the proxy
+with it, and the proxy's worker architecture constrains what runtime the
+model can use. Deploying the detector as a separate reverse-proxy hop, the
+appliance model, adds a full network traversal for every request and makes
+the detector a routing dependency, so its failure severs traffic entirely.
+The \texttt{auth\_request} pattern sits between the two: the detection
+service is a separate container with its own runtime, its own scaling, and
+its own failure domain, yet the decision remains synchronous and the
+architecture remains transparent, in the sense that neither the backend nor
+the client requires any modification or configuration change. The
+sub-request carries only metadata rather than the proxied body, which bounds
+its cost, and the fail-open policy is implemented at exactly this seam: if
+the sub-request times out or the detection service returns an unexpected
+status, Nginx is configured to treat the request as authorised, so the
+detector's failure domain cannot propagate outward into an outage of the
+protected application. The same seam is also the natural upgrade path,
+since replacing the model checkpoint, or the whole detection stack, is a
+rolling restart of one container behind an unchanged proxy configuration.
+
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}[
@@ -348,9 +449,9 @@ detection service has ruled on it.
 
   \begin{pgfonlayer}{background}
   \node[container,fit=(t1)(t2)(t3)(t4),
-        label={[font=\scriptsize\bfseries]above:Detection Service}] (detbox) {};
-  \node[container,fit=(nginx),label={[font=\scriptsize\bfseries]above:Edge Proxy}] {};
-  \node[container,fit=(backend),label={[font=\scriptsize\bfseries]above:Backend}] {};
+        label={[font=\scriptsize\itshape]above:Detection Service}] (detbox) {};
+  \node[container,fit=(nginx),label={[font=\scriptsize\itshape]above:Edge Proxy}] {};
+  \node[container,fit=(backend),label={[font=\scriptsize\itshape]above:Backend}] {};
   \end{pgfonlayer}
 
   \draw (client) edge node[above,font=\tiny]{HTTP} (nginx);
@@ -383,6 +484,26 @@ modulate the pipeline: safe internal endpoints (static assets, real-time
 channels) are evaluated only against Tier~1 to protect legitimate high-volume
 traffic from model uncertainty, and any unhandled error in the path fails open,
 trading a missed detection for availability.
+
+The ordering of the tiers is not incidental; it encodes a cost and
+certainty gradient that the latency results of Section~\ref{sec:results}
+depend on. The cheapest and most certain evidence is consulted first, so
+the expensive model runs only on the residue the deterministic layers
+could not settle, and every short-circuited request is one that pays
+microseconds of string matching instead of milliseconds of inference. The
+gradient also runs in falsifiability: a Tier~1 verdict can be checked by
+reading the matched signature, a Tier~2 verdict by re-evaluating a handful
+of boolean predicates, while a Tier~3 score is checkable only against the
+model itself, which is why the policy in Tier~4 treats it as evidence to
+be corroborated rather than a verdict to be trusted. An alternative
+ordering, running the model first and using rules to veto its mistakes,
+was considered and rejected on both grounds: it puts the latency cost on
+every request rather than the ambiguous ones, and it inverts the
+falsifiability gradient by making the least auditable component the
+gatekeeper. The chosen order does mean a stale Tier~1 signature blocks
+before the model can overrule it, but Tier~1 membership is restricted to
+payloads with no legitimate reading precisely so that this cost is
+nominal.
 
 \begin{figure}[t]
 \centering
@@ -429,6 +550,25 @@ the correct default for an availability-critical middlebox, but it is a security
 budget: its activation rate must be monitored, and it is treated as such in the
 discussion.
 
+The safelist warrants one further design note, because it is the piece of
+the architecture most likely to be misused. Its entries are exact route
+prefixes, not patterns, and the intended membership test is whether an
+endpoint accepts user-controlled input that reaches an interpreter: a
+static-asset route or a framework health check does not, a search or login
+route does. The safelist is also not a bypass, since Tier~1 still applies
+to safelisted traffic; an unambiguous payload in a polling URI is blocked
+regardless. What the safelist removes is exposure to the two probabilistic
+layers, whose false positives concentrate precisely on high-volume
+structurally unusual routes, and the correct mental model is therefore
+scoping the statistical detector to where statistics help, rather than
+exempting traffic from the firewall. Because entries are
+environment-supplied configuration rather than code, safelist drift, the
+accumulation of entries added during incidents and never reviewed, is a
+foreseeable operational hazard, and reviewing the list against the
+application's current routing table belongs in the same periodic
+maintenance cycle as the threshold replay described in
+Section~\ref{sec:discussion}.
+
 %=======================================================================
 \section{Implementation and Deployment}
 \label{sec:impl}
@@ -458,6 +598,25 @@ token-authenticated statistics and log API. Detection thresholds
 model path are all environment-configurable, so the operating point can be tuned
 without code changes. Inference runs on CPU or GPU transparently.
 
+Two implementation decisions in this service bear directly on the measured
+behaviour. The first is single-load, shared-state inference: because the
+model and tokenizer are loaded once at startup rather than per request, the
+per-request cost in Table~\ref{tab:latency} contains no amortised loading
+component, and conversely a deployment that scales by process rather than by
+thread pays the full model memory footprint per replica, which is the main
+sizing constraint on small hosts. The second is the error-handling
+discipline that implements the fail-open policy of
+Section~\ref{sec:arch}: the entire four-tier pipeline runs inside a single
+exception boundary whose handler returns \texttt{200}, so the failure of any
+individual tier, a malformed header that breaks decoding, a model file
+missing at startup, an out-of-memory condition during inference, degrades
+that request to an allow rather than an error page. Every such degradation
+increments a counter exposed through the statistics API, which is what makes
+the fail-open activation rate an observable quantity rather than a silent
+one; a deployment in which this counter climbs is a deployment whose
+security posture is quietly narrowing to Tier~1 alone, and the dashboard
+surfaces exactly that condition.
+
 \subsection{Observability}
 A lightweight dashboard polls the statistics API and renders live request volume,
 block rate, per-attack-class counts and a recent-decisions table. Every decision
@@ -466,6 +625,24 @@ decision, reason and model probability, suitable for forwarding to a SIEM. This
 observability is an engineering convenience rather than a research contribution,
 but it is what makes the operating-point and fail-open behaviour discussed later
 measurable in practice.
+
+Beyond the dashboard, the log schema is designed for the two consumers a
+WAF's telemetry actually has. For the security analyst, each record is
+self-contained evidence: the decision, the tier that produced it, the rule
+or score band responsible, and the request metadata sufficient to
+reconstruct the event without correlating across systems, which is the
+property SIEM ingestion pipelines reward. For the operator of the detection
+service itself, the aggregate views answer the health questions the
+architecture makes critical: the fail-open activation rate, which bounds
+how much of the time the service is actually protecting anything; the
+per-tier trigger mix, whose drift is the retraining signal discussed in
+Section~\ref{sec:discussion}; and the score distribution on allowed
+traffic, whose migration toward the block band is the earliest visible
+symptom of the benign-drift failure mode that the SR-BH transfer
+demonstrates in extreme form. None of these quantities requires sampling
+or instrumentation beyond the decision path the service executes anyway,
+which is what keeps observability from competing with the latency budget
+it exists to protect.
 
 \subsection{Reproducibility}
 The detection logic evaluated offline in Section~\ref{sec:results} is the same
@@ -499,6 +676,34 @@ default operating point the model-only decision is
 $\hat y(x)=\mathbb{1}[p(x)\ge 0.5]$; Section~\ref{sec:results} instead sweeps
 this cut-off directly, and the fusion policy (Eq.~\eqref{eq:fusion}) combines
 $p(x)$ with the rule signals rather than thresholding it alone.
+Table~\ref{tab:notation} collects the symbols used throughout the
+methodology and results for reference.
+
+\begin{table}[t]
+\centering
+\caption{Notation used throughout the methodology and results.}
+\label{tab:notation}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Symbol & Meaning \\
+\midrule
+$x$ & normalised request text (\texttt{METHOD}$\,\Vert\,$\texttt{URI}$'$) \\
+$y(x)$ & ground-truth label ($1$ = malicious) \\
+$\phi(x)$ & WordPiece token sequence, capped at 256 \\
+$h$ & pooled encoder representation ($\mathbb{R}^{768}$) \\
+$p(x)$ & model probability of the malicious class \\
+$\hat y(x)$ & model-only decision at threshold $0.5$ \\
+$\tau_h,\tau_\ell$ & fusion thresholds ($0.98$, $0.90$) \\
+$s_{\text{dir}},s_{\text{kw}},s_{\text{inj}},s_{\text{enc}},s_{\text{ca}}$ & Tier 1/2 rule signals \\
+$s_{\text{has}}$ & disjunction of the four Tier-2 signals \\
+$f(x)$ & fused decision (Eq.~\eqref{eq:fusion}; $1$ = block) \\
+$\mathcal{X}_a$ & malicious requests of attack class $a$ \\
+$R_a$ & recall restricted to class $a$ \\
+$B$ & payloads initially blocked by a configuration \\
+$E_m$ & evasion rate of mutation $m$ (Eq.~\eqref{eq:evasion}) \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Datasets}
 The evaluation uses the CSIC~2010 HTTP dataset~\cite{gimenez2010csic}, the field's
@@ -517,6 +722,24 @@ fresh model was fine-tuned on SR-BH~2020, nor was the reverse direction tested, 
 a further independent corpus such as ECML/PKDD~2007~\cite{pkdd2007} remains
 identified as a next step for strengthening external validity
 (Section~\ref{sec:threats}).
+
+The two transfer corpora were chosen to differ from CSIC along distinct
+axes, so that agreement between them would have been informative and their
+observed disagreement is doubly so. SR-BH~2020~\cite{srbh2020} is a
+labelled capture from a live honeypot: its benign traffic is real rather
+than synthesised, carrying the crawler probes, encoding artefacts and
+irregular paths of the open internet, while its attack traffic is
+contemporary opportunistic scanning. It therefore stresses the learned
+benign model, which is exactly where the model-only configuration failed.
+The second corpus is a 2025 capture of requests flagged malicious by a
+production ModSecurity instance~\cite{modsec30day2025}: attack-only by
+construction, but five years newer than SR-BH and fifteen newer than CSIC,
+so it stresses the attack side, whether payload styles have drifted past
+what CSIC-era signals recognise, which is exactly where the rule-dependent
+fusion branches failed. Neither corpus was inspected before the transfer
+runs beyond format validation, and no threshold, rule or safelist was
+adjusted for either; the zero-shot discipline is what makes the two results
+comparable to each other and to the within-corpus figures.
 
 \begin{table}[t]
 \centering
@@ -542,6 +765,27 @@ the base model's WordPiece vocabulary at a maximum length of $256$ tokens. The
 same preprocessing is applied at training and inference time and is shared with
 the deployed service.
 
+Each of the three steps closes a specific gap between what a rule engine
+sees and what a model should learn. Double decoding, rather than single,
+matches the attacker workflow the evasion literature documents: encoding a
+payload twice defeats any detector that decodes once, and empirically a
+second pass suffices because triple-encoded payloads break on real servers,
+which also decode a bounded number of times. Digit collapsing addresses a
+subtler leakage: CSIC's requests embed session identifiers, product numbers
+and timestamps whose exact values correlate spuriously with the label in a
+template-derived corpus, and a model allowed to see raw digits will happily
+learn that, for instance, a particular identifier range is malicious,
+an artefact that would not survive contact with any other traffic. Replacing
+digit runs with a placeholder removes the shortcut while preserving the
+structural fact that a number was present. Tokenisation with the encoder's
+own WordPiece vocabulary, finally, means attack syntax fragments into
+subword units the pretrained model has embeddings for, so fine-tuning
+adapts existing representations rather than learning characters from
+scratch; the $256$-token cap covers the full length of all but a negligible
+fraction of request lines in every corpus used here, and truncation, when
+it occurs, removes the tail of the query string rather than the path, which
+is the less informative end for the attack families in scope.
+
 \subsection{Model}
 The classifier is a pretrained transformer encoder with a linear classification
 head over the pooled \texttt{[CLS]} representation, fine-tuned end to end for
@@ -551,8 +795,91 @@ harness is model-agnostic and exposes two further configurations, the
 cybersecurity-pretrained
 SecureBERT~\cite{aghaei2022securebert,aghaei2025securebert2} and the
 latency-oriented DistilBERT~\cite{sanh2019distilbert}, as drop-in alternatives
-whose systematic comparison is left to future work. Optimisation uses AdamW with
-a warmup schedule, weight decay, and early stopping on validation F1.
+whose systematic comparison is left to future work.
+
+The encoder itself is the standard twelve-layer bidirectional transformer of
+Devlin et al.~\cite{devlin2019bert}. Each layer applies multi-head
+self-attention followed by a position-wise feed-forward network, with residual
+connections and layer normalisation around both. For a sequence of token
+embeddings packed into a matrix $H\in\mathbb{R}^{n\times d}$ with $n\le 256$
+and $d=768$, a single attention head computes
+\begin{equation}
+\mathrm{Att}(H) = \mathrm{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right)V,
+\label{eq:attention}
+\end{equation}
+where $Q = HW_Q$, $K = HW_K$, $V = HW_V$,
+$W_Q,W_K,W_V\in\mathbb{R}^{d\times d_k}$ are learned projections and
+$d_k = d/12$ for the twelve heads whose outputs are concatenated and projected
+back to $\mathbb{R}^{d}$. What makes this architecture apt for request
+classification is precisely the property that rule sets lack: the attention
+weights in Eq.~\eqref{eq:attention} are computed pairwise over the whole
+token sequence, so the representation of a token such as \texttt{SELECT}
+depends on whether it co-occurs with \texttt{UNION}, a quote character, or an
+encoded comment marker elsewhere in the URI, rather than on its surface form
+alone. An obfuscated payload that defeats a regular expression by breaking up
+its surface string still produces the same set of pairwise co-occurrences at
+the representation level, which is the mechanism behind the evasion resistance
+measured in Section~\ref{sec:results}.
+
+\subsection{Training procedure}
+Fine-tuning minimises the class-weighted binary cross-entropy
+\begin{equation}
+\mathcal{L} = -\frac{1}{N}\sum_{i=1}^{N}
+\big[\, \alpha\, y_i \log p(x_i) + (1-y_i)\log(1-p(x_i)) \,\big],
+\label{eq:loss}
+\end{equation}
+over the $N=6{,}644$ training requests of Table~\ref{tab:datasets}, where
+$\alpha$ compensates for the $68/32$ malicious/benign imbalance of the
+deduplicated corpus. Optimisation uses AdamW with a peak learning rate of
+$2\times10^{-5}$, linear warmup over the first $10\%$ of steps followed by
+linear decay, weight decay of $0.01$ on all non-bias parameters, and a batch
+size of $16$. All encoder layers are unfrozen, since preliminary runs with a
+frozen encoder and a trained head alone plateaued well below the full
+fine-tuning result, consistent with the observation that the pretraining
+corpus of \texttt{bert-base-uncased} contains essentially no URL-encoded
+attack syntax and the lower layers therefore have genuine adaptation to do.
+Early stopping monitors validation F1 with a patience of two epochs;
+convergence occurred within four epochs in every run performed for this
+research, which is typical for fine-tuning on corpora of this size and keeps
+the full training cost under twenty minutes on a single consumer GPU. The
+checkpoint with the best validation F1 is the one deployed in the detection
+service and evaluated throughout Section~\ref{sec:results}; no test-set
+information influenced any training or model-selection decision.
+
+\subsection{Rule engine design}
+The deterministic layer that the fusion policy consults deserves description
+in its own right, because its design determines both its contribution and its
+failure mode. Tier~1 holds direct signatures: exact and near-exact substring
+patterns for payload fragments whose presence in a URI has no plausible benign
+reading, such as stacked-query markers (\texttt{';--}), classic tautologies
+(\texttt{' OR '1'='1}), script-tag injections, path-traversal sequences
+(\texttt{../../}), and command-substitution syntax. These are checked against
+the double-decoded URI so that single or double percent-encoding does not hide
+them, and a Tier~1 hit blocks immediately with confidence $1.0$ without
+consulting anything else, which is what makes the tier safe to apply even on
+safelisted endpoints.
+
+Tier~2 is deliberately weaker in individual signals but broader in coverage.
+It computes the boolean signals of Eq.~\eqref{eq:fusion}: a keyword signal
+($s_{\text{kw}}$) that fires on SQL and script vocabulary such as
+\texttt{UNION}, \texttt{SELECT}, \texttt{alert} or \texttt{onerror}; an
+injection-pattern signal ($s_{\text{inj}}$) that fires on structural
+combinations such as a quote followed by a boolean operator; an encoding
+signal ($s_{\text{enc}}$) that fires when the request only parses sensibly
+after multiple decoding passes, itself a strong indicator of deliberate
+obfuscation; and a character-anomaly signal ($s_{\text{ca}}$) based on the
+density of characters rare in legitimate paths for the protected application.
+None of these signals blocks alone. The keyword list in particular would be
+unusable as a standalone rule, since \texttt{select} appears in ordinary
+query parameters, which is exactly why Tier~2 signals only ever act in
+conjunction, either with each other ($s_{\text{kw}}\wedge s_{\text{inj}}$) or
+with a model score band, as Eq.~\eqref{eq:fusion} specifies. The
+cross-dataset results of Section~\ref{sec:results} show what happens when
+this calibration meets a corpus it was not tuned for, in both directions: on
+SR-BH~2020 the conjunction design holds up and rescues a collapsing model,
+while on the 2025 production corpus the same signals fire on benign traffic
+shaped differently from CSIC's, and the rule layer becomes the failure mode
+rather than the safeguard.
 
 \subsection{Decision fusion}
 The fusion tier (Algorithm~\ref{alg:fusion}) blocks on an unambiguous signature,
@@ -608,6 +935,36 @@ Table~\ref{tab:main} and Table~\ref{tab:ablation}, while discarding the
 model-dependent cases recovers the rules-only decision used for those
 tables' ``rules only'' rows.
 
+\subsection{Worked examples}
+Four traces through Eq.~\eqref{eq:fusion} illustrate how the tiers divide the
+work in practice. A request such as
+\texttt{GET /products?id=1' OR '1'='1} terminates at Tier~1: the tautology is
+a direct signature, the verdict is \textsc{block} with confidence $1.0$, and
+neither the anomaly rules nor the model is ever consulted, which is why Tier~1
+hits contribute nothing to inference latency. A request carrying
+\texttt{id=1\%2527\%2520UNION\%2520SELECT} passes Tier~1 in its raw form but
+not after double decoding, where the keyword and injection-pattern signals
+both fire; the conjunction $s_{\text{kw}}\wedge s_{\text{inj}}$ blocks it at
+Tier~2, again without model involvement. A mutated payload that survives both
+deterministic tiers, for instance an SQL injection rewritten with inline
+comments so that no keyword matches cleanly, reaches Tier~3, where the model
+typically scores it far above $\tau_h$; whether it is blocked then depends on
+whether any rule signal fired at all, and in the measured evasion runs of
+Section~\ref{sec:results} the character-anomaly signal almost always had,
+because comment-based obfuscation raises the density of rare characters even
+as it suppresses keywords. Finally, a benign but unusual request, such as a
+long framework-generated polling URI dense with encoded punctuation, may
+receive a model score inside the $[\tau_\ell,\tau_h)$ band; it is allowed
+unless a keyword or character anomaly corroborates the model, and this single
+design decision, blocking on mid-band scores only with corroboration, is
+where most of the hybrid's false-positive control relative to a naive
+thresholding policy comes from. The four traces also make the failure
+surface explicit: the policy has no path by which a request with no rule
+signal and a sub-$\tau_\ell$ score can be blocked, so an attack that is both
+lexically clean and confidently misclassified by the model passes, which is
+precisely the event the adversarial evaluation of Section~\ref{sec:results}
+attempts to force and largely fails to.
+
 %=======================================================================
 \section{Experimental Setup}
 \label{sec:setup}
@@ -643,10 +1000,9 @@ the malicious requests of attack category $a$ gives the per-attack-class
 recall reported in Fig.~\ref{fig:perclass},
 \begin{equation}
 R_a = \frac{1}{|\mathcal{X}_a|}\sum_{x\in\mathcal{X}_a} \mathbb{1}[f(x)=1],
-\qquad \mathcal{X}_a=\{x : y(x)=1,\ \mathrm{type}(x)=a\},
 \label{eq:perclass}
 \end{equation}
-so that the overall recall $R$ in Table~\ref{tab:main} is recovered as the
+where $\mathcal{X}_a=\{x : y(x)=1,\ \mathrm{type}(x)=a\}$, so that the overall recall $R$ in Table~\ref{tab:main} is recovered as the
 size-weighted average $R=\sum_a |\mathcal{X}_a| R_a / \sum_a |\mathcal{X}_a|$
 of the per-class values.
 
@@ -655,12 +1011,29 @@ of the per-class values.
 random forest, and (iii) published transformer results on CSIC~2010 cited from the
 recent literature.
 
-\emph{Protocols.} \emph{Within-dataset}: train and test on the CSIC~2010
-splits. \emph{Ablation}: evaluate rules-only, model-only and the full hybrid on
-the same test set. \emph{Threshold sensitivity}: sweep the model decision
-threshold and record the FPR/recall trade-off. \emph{Latency}: measure
-per-request model inference on the GPU. \emph{Adversarial}: mutate blocked
-payloads with six semantics-preserving transformations and measure evasion.
+\emph{Protocols.} Six protocols structure the evaluation, and their
+ordering is deliberate, with each designed to be able to overturn the
+conclusion of the one before it. \emph{Within-dataset}: train on the
+CSIC~2010 training split, select on validation, report once on the held-out
+test split; this establishes the baseline competence that the remaining
+protocols stress. \emph{Ablation}: evaluate rules-only, model-only and the
+full hybrid on the identical test set, sharing preprocessing and splits so
+that differences are attributable to the decision policy alone.
+\emph{Threshold sensitivity}: sweep the model decision threshold from
+$0.50$ to $0.98$ and record the FPR/recall trade-off at each point,
+characterising the operating curve rather than a single operating point.
+\emph{Latency}: measure per-request model inference on the GPU over
+repeated single-request calls after warm-up, reporting mean, median, tail
+percentiles, and derived single-process throughput. \emph{Adversarial}:
+mutate every payload the evaluated configuration initially blocked with
+six semantics-preserving transformations and measure the fraction that
+flip to allowed, for the hybrid and the bare model separately.
+\emph{Cross-dataset}: evaluate the CSIC-trained detector zero-shot, with
+no fine-tuning, threshold change or rule adjustment, on two independent
+corpora that differ from CSIC in opposite ways. Every protocol consumes
+the same deployed decision path via the shared module described in
+Section~\ref{sec:impl}, so no protocol measures a laboratory variant of
+the system that differs from what the proxy actually runs.
 
 \emph{Environment.} Training and inference ran on an NVIDIA Tesla~T4 GPU
 (Google Colab) with PyTorch~2.11 (CUDA~12.8) and Hugging Face
@@ -713,6 +1086,22 @@ engine alone is weak on this corpus: it recalls only $43.5\%$ of attacks at a
 $20.9\%$ false-positive rate, because signatures calibrated for a different
 application misfire on CSIC's benign e-commerce traffic. Fig.~\ref{fig:bars}
 visualises the F1-versus-FPR contrast across configurations.
+
+That a character $n$-gram SVM edges out the fine-tuned transformer on
+within-corpus F1 deserves comment rather than silence, because it is the
+kind of result accuracy-focused papers tend to bury. On a deduplicated but
+still template-derived corpus, surface character statistics are highly
+informative: CSIC's attacks differ from its benign traffic in exactly the
+character distributions that TF--IDF $n$-grams capture, and a linear
+separator over those features is close to the Bayes rule for this
+particular corpus. The transformer's advantages, contextual reading of
+token co-occurrence and robustness to surface perturbation, are largely
+unexercised by a within-corpus split and only become visible under the
+adversarial mutations and the cross-dataset transfers reported below,
+where the SVM baseline was not competitive to begin with. The comparison
+is therefore a caution against selecting detectors on within-corpus F1
+alone, which is the metric on which nearly all of Table~\ref{tab:survey}'s
+entries rest: by that criterion the field should be shipping SVMs.
 
 \begin{table}[t]
 \centering
@@ -770,6 +1159,21 @@ Section~\ref{sec:results} shows next) not primarily for adversarial robustness
 either, and not even reliably for cross-dataset generalisation, since that
 benefit turns out to depend on which unfamiliar corpus the detector meets.
 
+The ablation also bounds what each layer could contribute under any fusion
+policy, not just the implemented one. Rules-only recall of $0.435$ means
+that fewer than half the corpus's attacks carry the lexical evidence the
+signatures encode, so no policy that leans on rule signals for detection,
+as opposed to corroboration, can exceed that ceiling on the attacks the
+model misses. Conversely, the model's $0.064$ FPR is the floor for any
+disjunctive combination that includes it, since a disjunction can only add
+false positives, never remove them. The implemented fusion sits inside the
+box these bounds define, and its position there, below model-only on both
+axes, quantifies precisely what the corroboration structure spends on this
+corpus. Reporting the box, and not only the point, is what lets a reader
+evaluate alternative fusion designs against these results without
+re-running the experiments: any proposed policy's within-corpus behaviour
+is predictable from which of the four confusion cells it reassigns.
+
 \begin{table}[t]
 \centering
 \caption{Ablation on the CSIC 2010 test set.}
@@ -792,6 +1196,26 @@ the hybrid recovers no additional true blocks over the model and instead adds
 $75$ extra benign requests wrongly blocked while missing $109$ more malicious
 requests than model-only, making false positives \emph{and} missed detections
 both grow, not a precision-for-recall trade.
+
+The direction of the second effect is the counter-intuitive one and merits
+unpacking. Under a purely disjunctive policy the hybrid's recall could never
+fall below the model's, since every model block would survive the union.
+The fusion of Eq.~\eqref{eq:fusion} is not purely disjunctive: the
+model-evidence branches require a coincident rule signal, so a malicious
+request that the model scores above $\tau_h$ but that trips no rule signal
+at all is allowed by the hybrid even though the model alone, thresholded at
+$0.5$, would have blocked it. The $109$ additional misses are exactly this
+population, attacks lexically clean enough to evade every Tier~1/2 signal
+while still being recognised by the encoder, and their existence on a corpus
+as dated as CSIC~2010 is an early, within-corpus glimpse of the
+corroboration structure's cost that the 2025 production corpus later
+magnifies into a collapse. The design lesson is symmetrical: corroboration
+is what buys the hybrid its false-positive control on mid-band scores, and
+corroboration is also what it charges for high-confidence detections the
+rules cannot see. Any fusion policy that conditions model blocks on rule
+agreement inherits both sides of that ledger, and the confusion matrices
+make the price visible at the level of individual counts rather than
+aggregate rates.
 
 \begin{figure}[t]
 \centering
@@ -830,6 +1254,26 @@ the same ordering. Injection and encoding attacks carry the strong lexical and
 structural cues that both the signatures and the transformer capture, whereas the
 heterogeneous ``other'' bucket is the hardest.
 
+The composition of that residual bucket explains its difficulty. It
+aggregates the attack styles that lack a stable lexical core: path
+traversals whose only distinguishing feature is repetition of a short,
+individually innocuous sequence; parameter-tampering and business-logic
+probes that are structurally well-formed requests with merely unusual
+values; and buffer-overflow-style payloads whose signal is length and
+repetition rather than vocabulary. For these, the token-sequence view that
+serves injection detection so well carries less information, and a portion
+of the bucket is arguably at the edge of what a URI-line classifier can
+decide at all, since a tampered parameter value can be identical in form to
+a legitimate one and differ only in what it means to the backend. The class
+labels themselves derive from heuristic pattern-matching over the corpus
+rather than ground-truth annotation, so the per-class figures should be
+read as indicative rather than exact; the aggregate recall, which does not
+depend on the class attribution, is unaffected by this caveat. The
+practical reading is that the proposed methodology's residual misses
+concentrate where request-line evidence is intrinsically thin, which argues
+for the body- and header-inspection extension of Section~\ref{sec:future}
+more than for a better encoder over the same input.
+
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}
@@ -855,6 +1299,26 @@ the whole range, while the false-positive rate less than halves, from $0.064$ to
 $0.026$. An operator prioritising precision can therefore run the model at
 $\tau=0.98$ and cut benign blocks by more than half for a $5.0$-point recall cost;
 the best-F1 point is $\tau=0.50$ (F1~$0.949$, FPR~$0.064$).
+
+The shape of the two curves matters more than any single operating point.
+Recall degrades almost linearly and gently across the sweep, which means the
+model assigns the bulk of true attacks scores very close to $1.0$: raising
+the bar from $0.50$ to $0.98$ only sheds the minority of attacks that were
+scored with moderate confidence in the first place. FPR, by contrast, falls
+in visible steps, with the largest drop between $\tau=0.80$ and $\tau=0.90$,
+indicating a cluster of benign requests that the model scores in that band,
+structurally unusual but legitimate traffic of exactly the kind the
+endpoint-aware safelist targets by other means. This distributional shape is
+what justifies the two-threshold design of Eq.~\eqref{eq:fusion}: the band
+$[\tau_\ell,\tau_h)=[0.90,0.98)$ sits precisely over the region where benign
+and malicious scores overlap, so requiring rule corroboration there filters
+most of the overlapping benign mass while retaining the attacks, whereas a
+single threshold anywhere in that region must sacrifice one side or the
+other. The sweep also bounds what threshold tuning alone can achieve: even
+at $\tau=0.98$ the model-only FPR ($0.026$) remains an order of magnitude
+above the hybrid's cross-dataset FPR on SR-BH~2020 ($0.0005$), so
+false-positive budgets much below a percent cannot be met by moving $\tau$
+and require either the safelist, the corroboration structure, or both.
 
 \begin{figure}[t]
 \centering
@@ -895,6 +1359,27 @@ enough to sit synchronously in the request path for moderate-traffic services,
 and motivates the distilled and quantised variants (Section~\ref{sec:discussion})
 for higher-throughput or CPU-only deployments.
 
+Three qualifications keep this number honest. First, the distribution is
+tight but not degenerate: the gap between the median and the $p99$
+($12.7$ versus $18.2$~ms) reflects GPU scheduling jitter and occasional
+longer token sequences rather than any bimodality, and a service-level
+objective should be stated against the tail, not the median, since the tail
+is what a user waiting on a blocked-or-allowed verdict experiences. Second,
+the figure is model inference alone, measured offline; it excludes the
+Nginx sub-request round trip, request serialisation, and the detection
+service's rule tiers. The rule tiers are string operations measured in
+microseconds and contribute negligibly, but the proxy hop is unmeasured and
+its characterisation through the live \texttt{auth\_request} path is future
+work rather than a claim. Third, per-request latency and aggregate capacity
+scale differently: Eq.~\eqref{eq:rps} describes one synchronous process, and
+because requests that terminate at Tier~1 or Tier~2 never reach the model,
+the effective per-request cost in production is an average over the tier mix,
+which the trigger-rate logging makes directly observable; since every
+request that terminates in the deterministic tiers or on the safelist skips
+inference entirely, the deployed system's mean cost sits below the
+model-only figure reported in Table~\ref{tab:latency} by a margin that
+depends on the traffic's tier mix.
+
 \begin{table}[t]
 \centering
 \caption{Single-request BERT inference latency (NVIDIA Tesla T4, batch size 1).}
@@ -920,7 +1405,33 @@ E_m = \frac{1}{|B|}\sum_{x\in B} \mathbb{1}[g(m(x))=0],
 \label{eq:evasion}
 \end{equation}
 i.e.\ the fraction of originally-blocked payloads that flip to \textsc{allow}
-after mutation. The $246$ malicious test payloads that the hybrid
+after mutation.
+
+The six families were chosen to span the obfuscation strategies the
+WAF-evasion literature documents, each attacking a different assumption a
+detector might rely on. Inline comment insertion rewrites SQL keywords with
+embedded comment markers (\texttt{UN/**/ION}), the classic defeat for
+substring signatures, and probes whether the tokeniser-level representation
+survives keyword fragmentation. Case randomisation
+(\texttt{uNiOn SeLeCt}) targets case-sensitive matching and, less obviously,
+the WordPiece vocabulary, since mixed-case fragments tokenise differently
+from their lowercase forms. Single and double URL encoding replace payload
+characters with percent-escapes, testing whether detection is applied before
+or after decoding; against this pipeline both are largely neutralised by
+design, because Tier~1 and the model both operate on the double-decoded
+string, and their inclusion verifies that the deployed decoding path
+actually behaves as specified rather than assuming it. Whitespace
+substitution swaps spaces for tabs, newlines and comment-based separators
+that SQL parsers accept, attacking rules that anchor on space-delimited
+keyword pairs. Junk parameter appending leaves the payload untouched but
+pads the request with benign-looking parameters, diluting the malicious
+fraction of the token sequence and probing whether the model's pooled
+representation can be washed out by surrounding noise. Each mutation is
+verified semantics-preserving in the sense that the transformed payload
+parses to the same injected statement, so a flip from \textsc{block} to
+\textsc{allow} is a true evasion rather than a broken attack.
+
+The $246$ malicious test payloads that the hybrid
 initially blocks ($B$ for the hybrid) were taken and
 six semantics-preserving mutations applied to each, re-submitting the mutated
 variants (Table~\ref{tab:adv}). None of the mutations evaded the hybrid: the
@@ -992,6 +1503,29 @@ rule layer. Only the CSIC$\to$SR-BH direction was tested, with a single second
 corpus at this stage, and no fresh model was fine-tuned on SR-BH itself;
 Section~\ref{sec:threats} discusses this scope.
 
+The mechanism of the collapse repays inspection, because it is more specific
+than ``distribution shift.'' A model whose FPR reaches $1.00$ has not merely
+degraded, it has inverted its notion of normality: every benign SR-BH
+request looks anomalous to a detector whose picture of benign traffic was
+fitted to CSIC's narrow, form-driven request templates. SR-BH's benign
+traffic, captured from a live honeypot, is dense with the encodings, long
+paths, crawler probes and framework artefacts that CSIC's synthesised
+benign set simply does not contain, so the encoder maps it into the region
+of representation space it learned to associate with attacks. The recall of
+$1.000$ in the model-only row is thus not a strength but a symptom, since a
+detector that blocks everything trivially recalls every attack. The
+ROC--AUC of $0.859$ shows the ranking is not fully destroyed, the scores
+still order attacks above benign traffic better than chance, but the
+calibration is, and an uncalibrated score is what an inline threshold
+policy actually consumes. This is also why the rule layer rescues the
+hybrid here: the corroboration requirement converts the model's inflated
+scores from sufficient evidence into mere evidence, and the deterministic
+signals, which carry no learned notion of CSIC-normality at all, veto the
+mass false positives while continuing to catch the attacks that carry
+lexical payloads. The rescue, in other words, works precisely because the
+failure was calibration rather than ranking, a diagnosis the next
+subsection's reversal makes essential rather than academic.
+
 \begin{table}[t]
 \centering
 \caption{Zero-shot cross-dataset transfer: CSIC-trained detector evaluated on
@@ -1034,6 +1568,24 @@ whether the rule layer helps or hurts generalisation is corpus-dependent, not
 a fixed property of the architecture, and a deployment cannot assume the
 SR-BH result transfers without checking against its own traffic.
 
+Precision matters here about what this reversal does and does not
+undermine. It does not undermine the model: across both transfers the
+encoder's ranking held up, collapsing only in calibration on SR-BH and not
+at all on the 2025 corpus, which is a stronger cross-corpus showing than
+the within-corpus SVM comparison would have predicted. It does not
+undermine deterministic Tier~1, whose direct signatures fire identically
+everywhere and appear in neither failure. What it undermines is
+specifically the coupling of model confidence to Tier~2's calibrated
+signals, the $s_{\text{has}}$ conjunction, whose two inputs age at
+different rates: model calibration decays with benign drift, rule-signal
+precision decays with attack drift, and a policy that requires their
+agreement fails whenever either has decayed alone. That diagnosis is more
+useful than a generic ``hybrids are brittle'' reading, because it
+localises the repair to one branch of Eq.~\eqref{eq:fusion} and predicts,
+testably, that refreshing the Tier~2 signal set should recover most of the
+lost recall on the 2025 corpus without touching the model, the experiment
+Section~\ref{sec:future} places first.
+
 \begin{table}[t]
 \centering
 \caption{Zero-shot recall on a second corpus: real 2025 production traffic
@@ -1073,6 +1625,15 @@ those studies report within-corpus classification on the full raw dataset
 without an inline enforcement constraint, false-positive-rate reporting,
 latency budget, or adversarial test, whereas the figures reported here are accompanied by the
 operational measurements the accuracy-only studies omit.
+A fair comparison protocol for this literature would fix the
+deduplication procedure, the split, and the seed before comparing
+architectures, and would report each configuration's FPR alongside its
+accuracy; until benchmark practice converges on something of that shape,
+cross-paper accuracy tables, including Table~\ref{tab:priorcompare},
+measure evaluation protocols as much as they measure detectors, and the
+conservative reading adopted here is that the compared numbers are upper
+bounds obtained under laxer conditions rather than points on a common
+scale.
 
 \begin{table}[t]
 \centering
@@ -1198,6 +1759,23 @@ system: naively treating allowed traffic as benign is a label-poisoning risk, so
 human-in-the-loop or verified-feedback design is required, and it is presented only
 as future work.
 
+Two further scope boundaries deserve explicit statement. The detector is
+per-request and stateless: each verdict is a function of one request line,
+so multi-request attack patterns, credential stuffing, enumeration,
+low-and-slow scraping, and business-logic abuse spread across individually
+innocuous requests, are invisible to it by construction, and rate-based or
+session-level controls remain the appropriate layer for them. And the
+evaluation's attack coverage follows its corpora: CSIC-era injection
+families dominate the training signal, and while the 2025 transfer corpus
+brings newer payload styles into the test distribution, attack classes
+essentially absent from all three corpora, server-side request forgery,
+deserialisation attacks, template injection, carry no measured claim
+here in either direction. Stating these boundaries is not hedging; a
+security control whose non-coverage is explicit can be composed with
+complementary controls deliberately, whereas one whose coverage is
+implied invites the deployment gaps that post-incident reviews attribute
+to misplaced trust.
+
 \subsection{Computational cost and deployment considerations}
 The latency figures in Table~\ref{tab:latency} are measured on a GPU; this
 does not mean the architecture requires one in production. A single Tesla~T4
@@ -1216,6 +1794,107 @@ single-process benchmark reports raw per-request latency rather than a
 production-sized deployment's aggregate capacity, which would additionally
 depend on the number of detection-service replicas placed behind the proxy,
 a scaling question this research does not evaluate.
+
+\subsection{Position within defence in depth}
+A WAF, hybrid or otherwise, is one layer of a defence-in-depth posture, and
+the results here say something about which layer it should be asked to be.
+The proposed methodology inspects the request line at the edge; it neither
+replaces input validation and parameterised queries in the application,
+which remain the correct fix for injection at its root, nor substitutes for
+egress monitoring, which catches what no request-side inspection can. Its
+comparative advantage, on the evidence of this evaluation, is as a
+measurable, tunable reduction layer: it removes the bulk of commodity
+attack traffic before the application sees it, at a latency cost that is
+now quantified and a false-positive cost that is now controllable, and its
+structured verdict stream doubles as an attack-surface sensor for the
+layers behind it. The cross-dataset results sharpen this positioning. A
+detector whose behaviour can invert on unfamiliar traffic should not be
+the load-bearing control in front of an unvalidated application, and
+conversely an application with sound internal defences can afford the
+WAF's occasional miss but benefits continuously from its noise reduction
+and telemetry. The fail-open policy is coherent exactly under this
+reading: it prices the WAF as a layer whose temporary absence is
+survivable, which is true only when it was never the last line of defence.
+Deployments that cannot accept that premise need the fail-closed variant,
+one configuration flag away, and should budget for the availability
+incidents that choice converts false positives into.
+
+\subsection{Auditability and fusion alternatives}
+A property of the proposed fusion policy that the accuracy tables do not
+capture is that every block is explainable in one sentence. A Tier~1 block
+names the signature that matched; a Tier~2 block names the signal
+conjunction; a model-driven block states the score band and the
+corroborating signal. For a security control that wrongly blocking a user
+is a customer-support incident for, this matters operationally: the
+structured log line for any decision contains its complete justification,
+and an operator disputing a block can replay the exact branch of
+Eq.~\eqref{eq:fusion} that fired. This auditability is a direct consequence
+of keeping the fusion closed-form and disjunctive, and it is what the
+obvious alternatives would spend. A learned fusion, logistic regression or
+a small tree over the rule signals and the model score, would almost
+certainly dominate the hand-set policy on any single corpus, and the
+2025-corpus failure suggests it might have learned to discount stale rule
+signals in exactly the way the fixed policy could not; the price is that
+its decisions become weights rather than reasons, and its own calibration
+becomes one more thing that drifts. A softer intermediate, replacing the
+hard $s_{\text{has}}$ conjunction with a weighted vote whose weights are
+set from the tier trigger-rate logs, keeps sentence-level explainability
+while letting the corroboration requirement relax when a signal's observed
+precision decays. The evaluation reported here establishes the two failure
+modes any such design must survive, mass false positives from an
+uncalibrated model and gated true positives from stale signals; choosing
+among the alternatives is deferred to the experiments of
+Section~\ref{sec:future} rather than argued from intuition.
+
+\subsection{Operational tuning guidance}
+An operator adopting the proposed methodology has three levers, and the
+results above indicate how each should be moved. The first is the threshold
+pair $(\tau_\ell,\tau_h)$. The sensitivity sweep of
+Section~\ref{sec:results} shows that recall is nearly flat across a wide
+band of $\tau_h$ while FPR moves substantially, so the pair should be tuned
+against a false-positive budget expressed in business terms, wrongly blocked
+requests per day on the operator's own traffic, rather than against F1 on a
+benchmark. The practical procedure is to run the service in a log-only mode
+for a period, replay the recorded verdicts under candidate thresholds
+offline, and select the most aggressive pair whose projected FPR stays
+inside the budget; because Eq.~\eqref{eq:fusion} is deterministic given the
+logs, this replay requires no re-inference. The second lever is the
+safelist. Every endpoint added to it removes a source of false positives at
+the cost of narrowing model coverage, and the endpoint-aware relaxation
+results indicate the exchange is favourable only for routes without
+user-controlled injection points; a safelist entry for a route that accepts
+free-text parameters is a hole, not a tuning. The third lever is the rule
+set itself, and here the two cross-dataset results cut in opposite
+directions deliberately: a deployment whose benign traffic resembles CSIC's
+structured, form-driven requests can leave the shipped calibration alone,
+while one serving modern API-heavy traffic should expect the
+character-anomaly and keyword signals to need recalibration before the rule
+tiers are trusted to block on their own, and the tier-level trigger-rate
+logging described in Section~\ref{sec:arch} exists precisely so that this
+recalibration can be driven by observed counts rather than guesswork.
+
+\subsection{Retraining and lifecycle}
+A deployed detector is a wasting asset: attack vocabulary drifts, the
+protected application's benign traffic drifts with every release, and both
+drifts erode the calibration this research measures at a single point in
+time. The architecture supports a retraining loop without downtime, since
+the detection service loads its checkpoint at startup and replicas can be
+rolled while the proxy fails open, but the harder question is when to
+retrain and on what. The logging design supplies the trigger signals: a
+sustained rise in the fail-open activation rate indicates service-level
+trouble, a drift in the model's score distribution on allowed traffic
+indicates benign drift, and a rise in Tier~1/2 block share relative to
+model-driven blocks indicates the signatures are catching what the model no
+longer recognises, the same pattern the SR-BH~2020 transfer produced in
+miniature. Labels are the binding constraint, as blocked-request logs are
+label-rich but allowed-request logs are not, and mining the latter for
+false negatives requires either periodic offline scanning or operator
+triage. The honest position, consistent with the single-run scope declared
+in Section~\ref{sec:threats}, is that this research demonstrates the
+mechanism for lifecycle management, the loggable signals and the swappable
+checkpoint, but does not longitudinally evaluate a retraining policy, which
+remains among the most valuable follow-on experiments this line of work
+could run.
 
 %=======================================================================
 \section{Threats to Validity}
@@ -1255,8 +1934,101 @@ not exhaustive; a search-based or learning-based adversary~\cite{advsqli2024}
 could be stronger, and the near-$0\%$ evasion figures for both the hybrid and
 the model alone should be read as robustness against these common
 transformations specifically, not a general adversarial-robustness guarantee.
+The evasion protocol also mutates only payloads the detector initially
+blocked, which measures robustness of existing detections but says nothing
+about attacks the detector never caught in the first place; an adversary
+does not need to mutate a payload that already passes.
+
+\emph{Conclusion validity.} Several of the mechanistic explanations offered
+in this research, the template-leakage account of the literature's accuracy
+gap, the calibration-versus-ranking diagnosis of the SR-BH collapse, and the
+stale-signal account of the 2025-corpus reversal, are inferences consistent
+with the measurements rather than facts established by dedicated
+experiments. Each is falsifiable with the follow-on experiments named in
+Section~\ref{sec:future}, deduplication-controlled re-runs of the compared
+methods, per-branch attribution of fusion decisions on the transfer
+corpora, and recalibrated-rule re-runs respectively, and each is presented
+as the most plausible reading of the data rather than the only one. The
+latency figures likewise measure model inference in isolation; conclusions
+about end-to-end user-visible latency through the full proxy path would
+require the live measurement identified as future work, and are not drawn
+here.
+
+\emph{Reliability.} All results are reproducible from the released scripts,
+pinned dependencies and fixed seeds up to the GPU nondeterminism noted
+above; the two corpora used for transfer testing are public (SR-BH~2020) or
+described by their source (the ModSecurity capture), so the protocol, if
+not every third-party artefact, can be independently repeated.
 
 %=======================================================================
+\section{Future Work}
+\label{sec:future}
+The findings above open several concrete lines of continuation, ordered here
+by how directly each addresses a limitation this research has measured
+rather than merely acknowledged.
+
+The most immediate is completing the cross-dataset protocol. The transfer
+evaluations reported here are one-directional, CSIC-trained models tested on
+foreign corpora, and the reverse direction, fine-tuning on SR-BH~2020 or on
+the 2025 production corpus and testing on CSIC, would establish whether the
+observed collapse is a property of CSIC's templated benign traffic or of
+zero-shot transfer as such. Adding ECML/PKDD~2007 as a third corpus would
+further separate corpus-specific effects from systematic ones, and a
+transfer matrix over three corpora in both directions is the experiment the
+generalisation claims of this field most need.
+
+Second, the 2025-corpus result points at a specific, testable repair:
+refreshing the Tier~2 signal calibration against modern traffic and
+re-running the same transfer evaluation. If a recalibrated rule layer stops
+dragging the hybrid's recall down, the failure was one of stale calibration
+and the architecture is sound; if the collapse persists, the conjunction
+design itself over-weights rule signals that no longer carry information on
+API-style traffic, which would argue for the calibrated, weighted fusion
+alternative over the current disjunctive policy. Learning the fusion
+function from data, with the rule signals as features alongside the model
+score, subsumes both outcomes and would replace hand-set thresholds with an
+operating curve, at the cost of the auditability that the closed form of
+Eq.~\eqref{eq:fusion} currently provides.
+
+Third, the encoder axis remains unexplored despite being fully plumbed: the
+training harness accepts SecureBERT, whose cybersecurity pretraining may
+close part of the adaptation gap noted in Section~\ref{sec:method}, and
+DistilBERT, whose halved depth bears directly on the CPU-deployment question
+raised in the discussion. A systematic accuracy--latency frontier across the
+three encoders, ideally including a quantised variant, would turn the
+deployment-cost discussion from qualitative to quantitative.
+
+Fourth, the measurement scope can be widened in two directions that matter
+operationally. End-to-end latency through the live
+Nginx/\texttt{auth\_request} path would decompose the inline cost into model
+inference, serialisation, and proxy overhead, replacing the offline GPU
+figure reported here. And extending inspection beyond the request line to
+headers and bodies would bring POST-borne attacks into scope, at the price
+of a substantially larger input space whose effect on both accuracy and the
+$256$-token budget is an open question.
+
+Finally, the lifecycle question of Section~\ref{sec:discussion}, when and on
+what to retrain, deserves a longitudinal study of its own: running the
+deployed system against a live traffic stream over months, logging the
+drift signals proposed there, and measuring how detection quality decays
+between retraining events would supply the missing empirical basis for
+retraining policy, and is the natural capstone for a line of research whose
+stated aim is deployability rather than benchmark accuracy.
+
+Two smaller extensions round out the list. Repeated-seed training runs
+with reported variance would put confidence intervals on the headline
+metrics and settle whether the run-to-run movement already observed
+(Section~\ref{sec:threats}) is typical of this corpus size; the cost is a
+handful of GPU-hours and the benefit is that every comparison in this
+research gains an error bar. And the explainability thread the survey
+notes as open has a concrete entry point here: attention-based or
+gradient-based attribution over the request tokens, surfaced in the same
+structured log line that already carries the rule-based justifications,
+would extend sentence-level explainability from the deterministic tiers to
+the model-driven branches, closing the auditability gap that
+Section~\ref{sec:discussion} identifies as the real price of learned
+fusion.
+
 \section{Conclusion}
 \label{sec:conclusion}
 This research presented a web application firewall that places a fine-tuned transformer in a
@@ -1285,18 +2057,42 @@ running a transformer inline as a firewall actually costs and buys, rather
 than an unqualified accuracy claim or a robustness claim assembled to fit the
 architecture the research started with. The rule layer's payoff is not a fixed property
 of the architecture; it is corpus-dependent, and a real deployment cannot
-assume the SR-BH result transfers without checking its own traffic. Future
-work includes extending the cross-dataset protocol to the reverse transfer
-direction and further corpora, refreshing the rule signal set against newer
-traffic specifically to see whether that closes the 2025-corpus gap,
-comparison of BERT with SecureBERT and distilled encoders (for which the
-training harness is already configured), distillation and quantisation for
-CPU-class latency, calibrated (non-disjunctive) fusion to control false
-positives, request-body and response inspection, verified online adaptation,
-and a real end-to-end latency measurement through the live
-Nginx/\texttt{auth\_request} stack rather than the offline GPU figure reported
-here, to separate model-inference cost from proxy and network overhead in the
-deployed system.
+assume the SR-BH result transfers without checking its own traffic.
+
+For the practitioner, the takeaways condense to three. Transformer
+inference is affordable inline, at $12.7$~ms median on modest hardware,
+so latency is no longer the reason to keep learned detection out of the
+blocking path. False-positive control, not accuracy, is where the
+engineering effort belongs, and the combination of confidence banding,
+endpoint-aware safelisting and corroborated fusion gives an operator
+concrete levers whose costs this research has measured rather than
+asserted. And no configuration of this or any comparable system should be
+promoted to blocking on a new deployment without a log-only period on the
+deployment's own traffic, because the single strongest empirical lesson
+here is that both the learned and the deterministic layers carry silent
+assumptions about the traffic they were built on, and which assumption
+breaks first is not predictable in advance. For the research community,
+the corresponding lesson is methodological: the field's dominant
+evaluation practice would have called this system finished at the
+within-corpus table, and every finding of consequence in this research,
+the FP cost of fusion, the near-robustness of the bare model, and the
+two opposing transfer results, lay beyond that table's edge.
+
+Beyond the specific numbers, the research offers the field a protocol. Any
+transformer-WAF proposal can be put through the same sequence, deduplicated
+within-corpus evaluation, ablation against its own rule layer, threshold
+sweep against a false-positive budget, measured inline latency, mutation
+based evasion of its own blocked set, and zero-shot transfer to at least
+two corpora that differ from the training distribution in different ways,
+and the sequence is designed so that each stage can overturn the
+conclusion of the previous one, as happened twice in this research. A
+proposal that survives all six stages has earned the word ``deployable'';
+one evaluated on within-corpus accuracy alone, as most of
+Table~\ref{tab:survey} is, has not yet made contact with the question. The
+proposed methodology's own results on that protocol are deliberately mixed,
+a strong detector, a rule layer whose value is real but conditional, and
+two transfer results that disagree, and reporting them in that form is
+what the protocol is for.
 
 %=======================================================================
 \bibliographystyle{IEEEtran}
