@@ -430,43 +430,59 @@ rolling restart of one container behind an unchanged proxy configuration.
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}[
-  node distance=2mm,
-  comp/.style={draw,thick,rounded corners=1.5pt,align=center,minimum height=8mm,
-              minimum width=15mm,font=\scriptsize,fill=gray!7},
-  tier/.style={draw,thick,align=center,minimum height=5mm,
-              minimum width=30mm,font=\scriptsize,fill=blue!6},
-  container/.style={draw,thick,rounded corners=2pt,inner sep=2.2mm,fill=gray!2},
-  every edge/.style={draw,thick,-{Stealth[length=2mm]}}]
+  node distance=2.5mm,
+  >=Stealth,
+  comp/.style={draw,thick,rounded corners=1.5pt,align=center,minimum height=7mm,
+              minimum width=14mm,font=\scriptsize,fill=gray!8},
+  tier/.style={draw,thick,align=center,minimum height=4.6mm,
+              minimum width=27mm,font=\scriptsize,fill=blue!6,rounded corners=1pt},
+  tierfusion/.style={tier,fill=orange!12,draw=orange!60!black},
+  container/.style={draw,thick,rounded corners=2pt,inner sep=2mm,fill=gray!2,
+                    draw=gray!55},
+  lbl/.style={font=\tiny,midway},
+  every edge/.style={draw,thick,-{Stealth[length=1.6mm]}}]
 
-  \node[comp] (client) {Client};
-  \node[comp,right=13mm of client] (nginx) {Nginx\\\texttt{\scriptsize auth\_request}};
-  \node[comp,right=13mm of nginx] (backend) {Backend};
+  \node[comp,fill=green!10] (client) {Client};
+  \node[comp,right=16mm of client,fill=blue!10] (nginx) {Nginx\\\texttt{\tiny auth\_request}};
+  \node[comp,right=16mm of nginx,fill=red!8] (backend) {Backend};
 
-  \node[tier,below=10mm of nginx.south,anchor=north] (t1) {1. Direct signatures};
-  \node[tier,below=1.5mm of t1] (t2) {2. Anomaly / injection rules};
-  \node[tier,below=1.5mm of t2] (t3) {3. Transformer scoring};
-  \node[tier,below=1.5mm of t3] (t4) {4. Decision fusion};
+  \node[tier,below=13mm of nginx.south,anchor=north] (t1) {Tier 1: Direct signatures};
+  \node[tier,below=1.5mm of t1] (t2) {Tier 2: Anomaly / injection rules};
+  \node[tier,below=1.5mm of t2] (t3) {Tier 3: Transformer scoring};
+  \node[tierfusion,below=1.5mm of t3] (t4) {Tier 4: Decision fusion};
 
   \begin{pgfonlayer}{background}
   \node[container,fit=(t1)(t2)(t3)(t4),
         label={[font=\scriptsize\itshape]above:Detection Service}] (detbox) {};
   \node[container,fit=(nginx),label={[font=\scriptsize\itshape]above:Edge Proxy}] {};
-  \node[container,fit=(backend),label={[font=\scriptsize\itshape]above:Backend}] {};
+  \node[container,fit=(backend),label={[font=\scriptsize\itshape]above:Backend Application}] {};
+  \node[container,fit=(client),label={[font=\scriptsize\itshape]above:Client}] {};
   \end{pgfonlayer}
 
-  \draw (client) edge node[above,font=\tiny]{HTTP} (nginx);
-  \draw (nginx) edge node[above,font=\tiny]{if allowed} (backend);
-  \draw[-{Stealth[length=2mm]}] (nginx.south) .. controls +(0,-5mm) and +(18mm,7mm) .. (t1.east);
-  \draw[-{Stealth[length=2mm]}] (t4.east) .. controls +(18mm,-7mm) and +(0,5mm) .. (nginx.south east);
-  \draw (t1) edge (t2);
-  \draw (t2) edge (t3);
-  \draw (t3) edge (t4);
+  \draw[->] (client) -- node[lbl,above=1pt]{1: request} (nginx);
+  \draw[->] (nginx) -- node[lbl,above=1pt]{4: if allowed} (backend);
+
+  \draw[->] (nginx.south) .. controls +(0,-6mm) and +(20mm,8mm) ..
+        node[lbl,pos=0.2,above right=0.5pt]{2: subrequest} (t1.east);
+  \draw[->] (t4.east) .. controls +(20mm,-8mm) and +(0,6mm) ..
+        node[lbl,pos=0.8,below right=0.5pt]{3: verdict} (nginx.south east);
+
+  \draw[->] (t1) -- (t2);
+  \draw[->] (t2) -- (t3);
+  \draw[->] (t3) -- (t4);
+
+  \draw[dashed,-{Stealth[length=1.6mm]},red!55!black,thick]
+    (detbox.west) .. controls +(-7mm,0) and +(-7mm,0) ..
+    node[lbl,left,text=red!55!black,align=center]{fail-open:\\error$\Rightarrow$200}
+    (nginx.west);
 \end{tikzpicture}
 \caption{Inline enforcement architecture: the edge proxy issues an internal
-sub-request via Nginx's \texttt{auth\_request} mechanism to the detection
-service container, whose four tiers run in sequence before an allow/block
-verdict is returned; the backend container only ever sees requests that
-passed all four tiers.}
+sub-request (2) via Nginx's \texttt{auth\_request} mechanism to the
+detection service container, whose four tiers run in sequence before a
+verdict (3) is returned and the request is proxied to the backend if
+allowed (4); the backend container only ever sees requests that passed all
+four tiers. The dashed path shows the fail-open safeguard: any unhandled
+error in the detection path degrades to an allow decision.}
 \label{fig:arch}
 \end{figure}
 
