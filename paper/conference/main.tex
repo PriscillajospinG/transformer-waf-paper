@@ -19,19 +19,35 @@
 \usepackage{url}
 \usepackage[table]{xcolor}
 \usepackage{tikz}
-\usetikzlibrary{shapes.geometric,arrows.meta,positioning,fit,backgrounds,calc}
+\usetikzlibrary{shapes.geometric,arrows.meta,positioning,fit,backgrounds,calc,shadows}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.17}
 \usepackage{algorithm}
 \usepackage{algorithmic}
+\renewcommand{\algorithmicrequire}{\textit{Require:}}
+\renewcommand{\algorithmicensure}{\textit{Ensure:}}
+\renewcommand{\algorithmicif}{\textit{if}}
+\renewcommand{\algorithmicthen}{\textit{then}}
+\renewcommand{\algorithmicelse}{\textit{else}}
+\renewcommand{\algorithmicendif}{\textit{end if}}
+\renewcommand{\algorithmicfor}{\textit{for}}
+\renewcommand{\algorithmicforall}{\textit{for all}}
+\renewcommand{\algorithmicdo}{\textit{do}}
+\renewcommand{\algorithmicendfor}{\textit{end for}}
+\renewcommand{\algorithmicwhile}{\textit{while}}
+\renewcommand{\algorithmicendwhile}{\textit{end while}}
+\renewcommand{\algorithmicrepeat}{\textit{repeat}}
+\renewcommand{\algorithmicuntil}{\textit{until}}
+\renewcommand{\algorithmicreturn}{\textit{return}}
+\renewcommand{\algorithmicprint}{\textit{print}}
 \usepackage[hidelinks]{hyperref}
 
 \newcommand{\ph}[1]{{\color{red}\textbf{[#1]}}}
 
 \begin{document}
 
-\title{A Hybrid Rule--Transformer Web Application Firewall\\
-with Inline Blocking and False-Positive-Controlled Fusion}
+\title{Realtime Web Attack Detection and Inline Blocking Using a Hybrid
+Rule Based Transformer For Web Application Firewall}
 
 \author{\IEEEauthorblockN{Priscilla Jospin G}
 \IEEEauthorblockA{Dept.\ of Data Science and Cyber Security\\
@@ -49,6 +65,7 @@ rahulr@karunya.edu}
 \maketitle
 
 \begin{abstract}
+\bfseries
 Most web application firewalls still lean on signature matching, and that
 approach breaks down fast against obfuscated payloads. Transformer-based
 detectors have been proposed as a replacement and look impressive on paper,
@@ -109,14 +126,15 @@ $99\%$ for transformer-based web attack classifiers on the CSIC~2010
 benchmark~\cite{wadbert2026,liu2024bertlstm}. But almost all of that work
 stops at offline classification: train on a static corpus, report an
 accuracy figure, done. Whether the detector could actually run as a
-firewall is rarely asked. Three questions in particular go unanswered.
-How much latency does the model add once it sits in the synchronous path of
-every request? What false-positive rate does it impose on real users at a
-chosen operating point, as opposed to a raw accuracy figure that says
-nothing about that cost? And when it is combined with the rule-based
-detection that is already deployed, does that help or hurt, and by how much?
+firewall is rarely asked. Three gaps in particular stand out. First, the
+latency the model adds once it sits in the synchronous path of every
+request is left unmeasured. Second, the false-positive rate it imposes on
+real users at a chosen operating point goes unreported, leaving only a raw
+accuracy figure that says nothing about that cost. Third, its interaction
+with the rule-based detection that is already deployed, whether combining
+the two helps or hurts, and by how much, is left unexamined.
 
-This research answers those three questions by building the thing and testing
+This research closes those three gaps by building the thing and testing
 it end to end rather than offline: a WAF in which a fine-tuned transformer
 is a working component of a live inline enforcement path. Specifically, the
 proposed methodology contributes a transparent inline architecture built on Nginx's sub-request
@@ -270,51 +288,69 @@ formalises this banding as the Tier~4 decision procedure.
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}[
-  node distance=2.5mm,
+  node distance=3mm,
   >=Stealth,
-  comp/.style={draw,thick,rounded corners=1.5pt,align=center,minimum height=7mm,
-              minimum width=14mm,font=\scriptsize,fill=gray!8},
-  tier/.style={draw,thick,align=center,minimum height=4.6mm,
-              minimum width=27mm,font=\scriptsize,fill=blue!6,rounded corners=1pt},
-  tierfusion/.style={tier,fill=orange!12,draw=orange!60!black},
-  container/.style={draw,thick,rounded corners=2pt,inner sep=2mm,fill=gray!2,
-                    draw=gray!55},
-  lbl/.style={font=\tiny,midway},
+  font=\sffamily,
+  comp/.style={draw,thick,rounded corners=2.5pt,align=center,minimum height=8mm,
+              minimum width=14mm,font=\sffamily\scriptsize,fill=gray!6,
+              drop shadow={shadow xshift=0.4pt,shadow yshift=-0.4pt,opacity=0.28}},
+  tier/.style={draw,thick,align=center,minimum height=5.4mm,
+              minimum width=27mm,font=\sffamily\scriptsize,fill=blue!5,
+              rounded corners=1.5pt,line width=0.6pt},
+  tierfusion/.style={tier,fill=orange!10,draw=orange!50!black},
+  container/.style={draw,thick,rounded corners=3pt,inner sep=2.2mm,fill=gray!2,
+                    draw=gray!45,line width=0.5pt},
+  lbl/.style={font=\sffamily\tiny,align=center},
+  badge/.style={draw,circle,fill=gray!85,text=white,font=\sffamily\tiny,
+               inner sep=0pt,minimum size=3.6mm},
   every edge/.style={draw,thick,-{Stealth[length=1.6mm]}}]
 
-  \node[comp,fill=green!10] (client) {Client};
-  \node[comp,right=16mm of client,fill=blue!10] (nginx) {Nginx};
-  \node[comp,right=16mm of nginx,fill=red!8] (backend) {Backend};
+  \node[comp,fill=green!8,draw=green!40!black] (client) {Client};
+  \node[comp,right=16mm of client,fill=blue!8,draw=blue!40!black] (nginx) {Nginx};
+  \node[comp,right=16mm of nginx,fill=red!6,draw=red!40!black] (backend) {Backend};
 
-  \node[tier,below=13mm of nginx.south,anchor=north] (t1) {Tier 1: Direct signatures};
-  \node[tier,below=1.5mm of t1] (t2) {Tier 2: Anomaly / injection rules};
-  \node[tier,below=1.5mm of t2] (t3) {Tier 3: Transformer scoring};
-  \node[tierfusion,below=1.5mm of t3] (t4) {Tier 4: Decision fusion};
+  \node[tier,below=20mm of nginx,anchor=north] (t1) {Tier 1 -- Direct signatures};
+  \node[tier,below=1.8mm of t1] (t2) {Tier 2 -- Anomaly / injection rules};
+  \node[tier,below=1.8mm of t2] (t3) {Tier 3 -- Transformer scoring};
+  \node[tierfusion,below=1.8mm of t3] (t4) {Tier 4 -- Decision fusion};
 
   \begin{pgfonlayer}{background}
   \node[container,fit=(t1)(t2)(t3)(t4),
-        label={[font=\scriptsize\itshape]above:Detection Service}] (detbox) {};
-  \node[container,fit=(nginx),label={[font=\scriptsize\itshape]above:Edge Proxy}] {};
-  \node[container,fit=(backend),label={[font=\scriptsize\itshape]above:Backend Application}] {};
-  \node[container,fit=(client),label={[font=\scriptsize\itshape]above:Client}] {};
+        label={[font=\sffamily\scriptsize\itshape]above:Detection Service}] (detbox) {};
+  \node[container,fit=(nginx),label={[font=\sffamily\scriptsize\itshape]above:Edge Proxy}] {};
+  \node[container,fit=(backend),label={[font=\sffamily\scriptsize\itshape]above:Backend Application}] {};
+  \node[container,fit=(client),label={[font=\sffamily\scriptsize\itshape]above:Client}] {};
   \end{pgfonlayer}
 
-  \draw[->] (client) -- node[lbl,above=1pt]{1: request} (nginx);
-  \draw[->] (nginx) -- node[lbl,above=1pt]{4: if allowed} (backend);
+  \path (client) -- (nginx) coordinate[midway] (m1);
+  \path (nginx) -- (backend) coordinate[midway] (m4);
 
-  \draw[->] (nginx.south) .. controls +(0,-6mm) and +(20mm,8mm) ..
-        node[lbl,pos=0.2,above right=0.5pt]{2: subrequest} (t1.east);
-  \draw[->] (t4.east) .. controls +(20mm,-8mm) and +(0,6mm) ..
-        node[lbl,pos=0.8,below right=0.5pt]{3: verdict} (nginx.south east);
+  \draw[->] (client) -- (nginx);
+  \node[badge] at (m1) {1};
+  \node[lbl,below=1pt of m1] {request};
+
+  \draw[->] (nginx) -- (backend);
+  \node[badge] at (m4) {4};
+  \node[lbl,below=1pt of m4] {if allowed};
+
+  \draw[->] ([xshift=-4mm]nginx.south) -- ([xshift=-4mm]detbox.north)
+        coordinate[pos=0.5] (m2);
+  \node[badge] at (m2) {2};
+  \node[lbl,left=1.2mm of m2] {subrequest};
+
+  \draw[->] ([xshift=4mm]detbox.north) -- ([xshift=4mm]nginx.south)
+        coordinate[pos=0.5] (m3);
+  \node[badge] at (m3) {3};
+  \node[lbl,right=1.2mm of m3] {verdict};
 
   \draw[->] (t1) -- (t2);
   \draw[->] (t2) -- (t3);
   \draw[->] (t3) -- (t4);
 
-  \draw[dashed,-{Stealth[length=1.6mm]},red!55!black,thick]
-    (detbox.west) .. controls +(-7mm,0) and +(-7mm,0) ..
-    node[lbl,left,text=red!55!black,align=center]{fail-open:\\error$\Rightarrow$200}
-    (nginx.west);
+  \draw[dash pattern=on 2.6pt off 1.8pt,-{Stealth[length=1.6mm]},red!45!black,line width=0.9pt]
+    (detbox.west) -- ++(-6.5mm,0) |-
+    node[lbl,pos=0.25,above,text=red!45!black,align=center]{fail-open: error$\Rightarrow$200}
+    ([xshift=-4mm]nginx.south);
 \end{tikzpicture}
 \caption{Inline enforcement architecture: the edge proxy issues an internal
 sub-request (2) to the detection service container, whose four tiers run in
@@ -331,16 +367,16 @@ unhandled error in the detection path degrades to an allow decision.}
 \begin{algorithmic}[1]
 \REQUIRE $(\text{method},\text{uri})$, model score $p$, $\tau_h{=}0.98$, $\tau_\ell{=}0.90$
 \STATE $u \gets \text{doubleDecode}(\text{uri})$
-\IF{$\text{directSignature}(u)$} \STATE return \textsc{block} \ENDIF
+\IF{$\text{directSignature}(u)$} \STATE return BLOCK \ENDIF
 \STATE $s \gets \text{ruleSignals}(u)$
 \IF{$(s.\text{keyword} \wedge s.\text{injection}) \vee s.\text{encoding}$}
-   \STATE return \textsc{block}
+   \STATE return BLOCK
 \ENDIF
-\IF{$p > \tau_h \wedge s.\text{hasSignal}$} \STATE return \textsc{block} \ENDIF
+\IF{$p > \tau_h \wedge s.\text{hasSignal}$} \STATE return BLOCK \ENDIF
 \IF{$\tau_\ell \le p < \tau_h \wedge (s.\text{keyword} \vee s.\text{charAnom})$}
-   \STATE return \textsc{block}
+   \STATE return BLOCK
 \ENDIF
-\STATE return \textsc{allow}
+\STATE return ALLOW
 \end{algorithmic}
 \end{algorithm}
 
@@ -360,7 +396,7 @@ where $u=\text{doubleDecode}(\text{uri})$, $p(x)$ is the model probability
 from Eq.~\eqref{eq:softmax}, $s_{\text{dir}},s_{\text{kw}},s_{\text{inj}},s_{\text{enc}},s_{\text{ca}}\in\{0,1\}$
 are the Tier~1/2 rule signals (direct signature, keyword, injection
 pattern, encoding anomaly, character anomaly), $s_{\text{has}}=s_{\text{kw}}\vee s_{\text{enc}}\vee s_{\text{inj}}\vee s_{\text{ca}}$,
-and $f(x)=1$ denotes \textsc{block}. Discarding the rule-dependent cases
+and $f(x)=1$ denotes BLOCK. Discarding the rule-dependent cases
 recovers the model-only decision $\hat y(x)$ used for the ``BERT (model
 only)'' row of Table~\ref{tab:main}, while discarding the model-dependent
 cases recovers the rules-only decision used for that table's ``Rules
@@ -379,11 +415,11 @@ pseudocode or Eq.~\eqref{eq:fusion} alone.
   \node[dec,below=of d1] (d2) {$(s_{\text{kw}}\wedge s_{\text{inj}})$\\$\vee\, s_{\text{enc}}$?};
   \node[dec,below=of d2] (d3) {$p>\tau_h$\\$\wedge\, s_{\text{has}}$?};
   \node[dec,below=of d3] (d4) {$\tau_\ell\le p<\tau_h$\\$\wedge\,(s_{\text{kw}}\vee s_{\text{ca}})$?};
-  \node[term,right=14mm of d1] (b1) {\textsc{block}};
-  \node[term,right=14mm of d2] (b2) {\textsc{block}};
-  \node[term,right=14mm of d3] (b3) {\textsc{block}};
-  \node[term,right=14mm of d4] (b4) {\textsc{block}};
-  \node[term,below=6mm of d4] (allow) {\textsc{allow}};
+  \node[term,right=14mm of d1] (b1) {BLOCK};
+  \node[term,right=14mm of d2] (b2) {BLOCK};
+  \node[term,right=14mm of d3] (b3) {BLOCK};
+  \node[term,right=14mm of d4] (b4) {BLOCK};
+  \node[term,below=6mm of d4] (allow) {ALLOW};
   \draw (d1) edge node[above,font=\tiny]{yes} (b1);
   \draw (d1) edge node[left,font=\tiny]{no} (d2);
   \draw (d2) edge node[above,font=\tiny]{yes} (b2);
@@ -677,7 +713,7 @@ E_m = \frac{1}{|B|}\sum_{x\in B} \mathbb{1}[g(m(x))=0],
 \label{eq:evasion}
 \end{equation}
 i.e.\ the fraction of originally-blocked payloads that flip to
-\textsc{allow} after mutation, averaged over the six $m$ to give the
+ALLOW after mutation, averaged over the six $m$ to give the
 overall figures in Table~\ref{tab:latency}. Almost all of the six
 semantics-preserving mutations applied to the initially blocked
 payloads failed to evade either configuration: four families ($E_m=0$)

@@ -17,11 +17,32 @@
 \usepackage[table]{xcolor}
 \usepackage{cite}
 \usepackage{tikz}
-\usetikzlibrary{shapes.geometric,arrows.meta,positioning,fit,backgrounds,calc}
+\usetikzlibrary{shapes.geometric,arrows.meta,positioning,fit,backgrounds,calc,shadows}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.17}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+\algrenewcommand{\algorithmicrequire}{\textit{Require:}}
+\algrenewcommand{\algorithmicensure}{\textit{Ensure:}}
+\algrenewcommand{\algorithmicif}{\textit{if}}
+\algrenewcommand{\algorithmicthen}{\textit{then}}
+\algrenewcommand{\algorithmicelse}{\textit{else}}
+\algrenewcommand{\algorithmicendif}{\textit{end if}}
+\algrenewcommand{\algorithmicfor}{\textit{for}}
+\algrenewcommand{\algorithmicforall}{\textit{for all}}
+\algrenewcommand{\algorithmicdo}{\textit{do}}
+\algrenewcommand{\algorithmicendfor}{\textit{end for}}
+\algrenewcommand{\algorithmicwhile}{\textit{while}}
+\algrenewcommand{\algorithmicendwhile}{\textit{end while}}
+\algrenewcommand{\algorithmicloop}{\textit{loop}}
+\algrenewcommand{\algorithmicendloop}{\textit{end loop}}
+\algrenewcommand{\algorithmicrepeat}{\textit{repeat}}
+\algrenewcommand{\algorithmicuntil}{\textit{until}}
+\algrenewcommand{\algorithmicreturn}{\textit{return}}
+\algrenewcommand{\algorithmicprocedure}{\textit{procedure}}
+\algrenewcommand{\algorithmicendprocedure}{\textit{end procedure}}
+\algrenewcommand{\algorithmicfunction}{\textit{function}}
+\algrenewcommand{\algorithmicendfunction}{\textit{end function}}
 \usepackage[hidelinks]{hyperref}
 
 % Placeholder macro: renders in red so any remaining unfilled numbers are obvious.
@@ -430,51 +451,69 @@ rolling restart of one container behind an unchanged proxy configuration.
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}[
-  node distance=2.5mm,
+  node distance=3mm,
   >=Stealth,
-  comp/.style={draw,thick,rounded corners=1.5pt,align=center,minimum height=7mm,
-              minimum width=14mm,font=\scriptsize,fill=gray!8},
-  tier/.style={draw,thick,align=center,minimum height=4.6mm,
-              minimum width=27mm,font=\scriptsize,fill=blue!6,rounded corners=1pt},
-  tierfusion/.style={tier,fill=orange!12,draw=orange!60!black},
-  container/.style={draw,thick,rounded corners=2pt,inner sep=2mm,fill=gray!2,
-                    draw=gray!55},
-  lbl/.style={font=\tiny,midway},
+  font=\sffamily,
+  comp/.style={draw,thick,rounded corners=2.5pt,align=center,minimum height=8mm,
+              minimum width=14mm,font=\sffamily\scriptsize,fill=gray!6,
+              drop shadow={shadow xshift=0.4pt,shadow yshift=-0.4pt,opacity=0.28}},
+  tier/.style={draw,thick,align=center,minimum height=5.4mm,
+              minimum width=27mm,font=\sffamily\scriptsize,fill=blue!5,
+              rounded corners=1.5pt,line width=0.6pt},
+  tierfusion/.style={tier,fill=orange!10,draw=orange!50!black},
+  container/.style={draw,thick,rounded corners=3pt,inner sep=2.2mm,fill=gray!2,
+                    draw=gray!45,line width=0.5pt},
+  lbl/.style={font=\sffamily\tiny,align=center},
+  badge/.style={draw,circle,fill=gray!85,text=white,font=\sffamily\tiny,
+               inner sep=0pt,minimum size=3.6mm},
   every edge/.style={draw,thick,-{Stealth[length=1.6mm]}}]
 
-  \node[comp,fill=green!10] (client) {Client};
-  \node[comp,right=16mm of client,fill=blue!10] (nginx) {Nginx\\\texttt{\tiny auth\_request}};
-  \node[comp,right=16mm of nginx,fill=red!8] (backend) {Backend};
+  \node[comp,fill=green!8,draw=green!40!black] (client) {Client};
+  \node[comp,right=16mm of client,fill=blue!8,draw=blue!40!black] (nginx) {Nginx};
+  \node[comp,right=16mm of nginx,fill=red!6,draw=red!40!black] (backend) {Backend};
 
-  \node[tier,below=13mm of nginx.south,anchor=north] (t1) {Tier 1: Direct signatures};
-  \node[tier,below=1.5mm of t1] (t2) {Tier 2: Anomaly / injection rules};
-  \node[tier,below=1.5mm of t2] (t3) {Tier 3: Transformer scoring};
-  \node[tierfusion,below=1.5mm of t3] (t4) {Tier 4: Decision fusion};
+  \node[tier,below=20mm of nginx,anchor=north] (t1) {Tier 1 -- Direct signatures};
+  \node[tier,below=1.8mm of t1] (t2) {Tier 2 -- Anomaly / injection rules};
+  \node[tier,below=1.8mm of t2] (t3) {Tier 3 -- Transformer scoring};
+  \node[tierfusion,below=1.8mm of t3] (t4) {Tier 4 -- Decision fusion};
 
   \begin{pgfonlayer}{background}
   \node[container,fit=(t1)(t2)(t3)(t4),
-        label={[font=\scriptsize\itshape]above:Detection Service}] (detbox) {};
-  \node[container,fit=(nginx),label={[font=\scriptsize\itshape]above:Edge Proxy}] {};
-  \node[container,fit=(backend),label={[font=\scriptsize\itshape]above:Backend Application}] {};
-  \node[container,fit=(client),label={[font=\scriptsize\itshape]above:Client}] {};
+        label={[font=\sffamily\scriptsize\itshape]above:Detection Service}] (detbox) {};
+  \node[container,fit=(nginx),label={[font=\sffamily\scriptsize\itshape]above:Edge Proxy}] {};
+  \node[container,fit=(backend),label={[font=\sffamily\scriptsize\itshape]above:Backend Application}] {};
+  \node[container,fit=(client),label={[font=\sffamily\scriptsize\itshape]above:Client}] {};
   \end{pgfonlayer}
 
-  \draw[->] (client) -- node[lbl,above=1pt]{1: request} (nginx);
-  \draw[->] (nginx) -- node[lbl,above=1pt]{4: if allowed} (backend);
+  \path (client) -- (nginx) coordinate[midway] (m1);
+  \path (nginx) -- (backend) coordinate[midway] (m4);
 
-  \draw[->] (nginx.south) .. controls +(0,-6mm) and +(20mm,8mm) ..
-        node[lbl,pos=0.2,above right=0.5pt]{2: subrequest} (t1.east);
-  \draw[->] (t4.east) .. controls +(20mm,-8mm) and +(0,6mm) ..
-        node[lbl,pos=0.8,below right=0.5pt]{3: verdict} (nginx.south east);
+  \draw[->] (client) -- (nginx);
+  \node[badge] at (m1) {1};
+  \node[lbl,below=1pt of m1] {request};
+
+  \draw[->] (nginx) -- (backend);
+  \node[badge] at (m4) {4};
+  \node[lbl,below=1pt of m4] {if allowed};
+
+  \draw[->] ([xshift=-4mm]nginx.south) -- ([xshift=-4mm]detbox.north)
+        coordinate[pos=0.5] (m2);
+  \node[badge] at (m2) {2};
+  \node[lbl,left=1.2mm of m2] {subrequest};
+
+  \draw[->] ([xshift=4mm]detbox.north) -- ([xshift=4mm]nginx.south)
+        coordinate[pos=0.5] (m3);
+  \node[badge] at (m3) {3};
+  \node[lbl,right=1.2mm of m3] {verdict};
 
   \draw[->] (t1) -- (t2);
   \draw[->] (t2) -- (t3);
   \draw[->] (t3) -- (t4);
 
-  \draw[dashed,-{Stealth[length=1.6mm]},red!55!black,thick]
-    (detbox.west) .. controls +(-7mm,0) and +(-7mm,0) ..
-    node[lbl,left,text=red!55!black,align=center]{fail-open:\\error$\Rightarrow$200}
-    (nginx.west);
+  \draw[dash pattern=on 2.6pt off 1.8pt,-{Stealth[length=1.6mm]},red!45!black,line width=0.9pt]
+    (detbox.west) -- ++(-6.5mm,0) |-
+    node[lbl,pos=0.25,above,text=red!45!black,align=center]{fail-open: error$\Rightarrow$200}
+    ([xshift=-4mm]nginx.south);
 \end{tikzpicture}
 \caption{Inline enforcement architecture: the edge proxy issues an internal
 sub-request (2) via Nginx's \texttt{auth\_request} mechanism to the
@@ -917,14 +956,14 @@ the one the rules were calibrated for.
 \Require request $(\text{method},\text{uri})$, model score $p$, thresholds
 $\tau_h{=}0.98$, $\tau_\ell{=}0.90$
 \State $u \gets \text{doubleDecode}(\text{uri})$
-\If{$\text{directSignature}(u)$} \Return \textsc{block}, $1.0$ \EndIf
+\If{$\text{directSignature}(u)$} \Return BLOCK, $1.0$ \EndIf
 \State $s \gets \text{ruleSignals}(u)$
-\If{$s.\text{keyword} \wedge s.\text{injection}$} \Return \textsc{block} \EndIf
-\If{$s.\text{encoding}$} \Return \textsc{block} \EndIf
-\If{$p > \tau_h \wedge s.\text{hasSignal}$} \Return \textsc{block}, $p$ \EndIf
+\If{$s.\text{keyword} \wedge s.\text{injection}$} \Return BLOCK \EndIf
+\If{$s.\text{encoding}$} \Return BLOCK \EndIf
+\If{$p > \tau_h \wedge s.\text{hasSignal}$} \Return BLOCK, $p$ \EndIf
 \If{$\tau_\ell \le p < \tau_h \wedge (s.\text{keyword} \vee s.\text{charAnom})$}
-   \Return \textsc{block}, $p$ \EndIf
-\State \Return \textsc{allow}, $p$
+   \Return BLOCK, $p$ \EndIf
+\State \Return ALLOW, $p$
 \end{algorithmic}
 \end{algorithm}
 
@@ -945,7 +984,7 @@ from Eq.~\eqref{eq:softmax}, $s_{\text{dir}},s_{\text{kw}},s_{\text{inj}},s_{\te
 are the Tier~1/2 rule signals (direct signature, keyword, injection pattern,
 encoding anomaly, character anomaly), $s_{\text{has}}=s_{\text{kw}}\vee
 s_{\text{enc}}\vee s_{\text{inj}}\vee s_{\text{ca}}$, and $f(x)=1$ denotes
-\textsc{block}. Discarding the rule-dependent cases recovers the model-only
+BLOCK. Discarding the rule-dependent cases recovers the model-only
 decision $\hat y(x)$ used for the ``model only'' rows of
 Table~\ref{tab:main} and Table~\ref{tab:ablation}, while discarding the
 model-dependent cases recovers the rules-only decision used for those
@@ -955,7 +994,7 @@ tables' ``rules only'' rows.
 Four traces through Eq.~\eqref{eq:fusion} illustrate how the tiers divide the
 work in practice. A request such as
 \texttt{GET /products?id=1' OR '1'='1} terminates at Tier~1: the tautology is
-a direct signature, the verdict is \textsc{block} with confidence $1.0$, and
+a direct signature, the verdict is BLOCK with confidence $1.0$, and
 neither the anomaly rules nor the model is ever consulted, which is why Tier~1
 hits contribute nothing to inference latency. A request carrying
 \texttt{id=1\%2527\%2520UNION\%2520SELECT} passes Tier~1 in its raw form but
@@ -1420,7 +1459,7 @@ or $\hat y$) is
 E_m = \frac{1}{|B|}\sum_{x\in B} \mathbb{1}[g(m(x))=0],
 \label{eq:evasion}
 \end{equation}
-i.e.\ the fraction of originally-blocked payloads that flip to \textsc{allow}
+i.e.\ the fraction of originally-blocked payloads that flip to ALLOW
 after mutation.
 
 The six families were chosen to span the obfuscation strategies the
@@ -1444,8 +1483,8 @@ pads the request with benign-looking parameters, diluting the malicious
 fraction of the token sequence and probing whether the model's pooled
 representation can be washed out by surrounding noise. Each mutation is
 verified semantics-preserving in the sense that the transformed payload
-parses to the same injected statement, so a flip from \textsc{block} to
-\textsc{allow} is a true evasion rather than a broken attack.
+parses to the same injected statement, so a flip from BLOCK to
+ALLOW is a true evasion rather than a broken attack.
 
 The $246$ malicious test payloads that the hybrid
 initially blocks ($B$ for the hybrid) were taken and
