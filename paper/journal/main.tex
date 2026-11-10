@@ -87,23 +87,23 @@ OWASP Top Ten for many years. The common defence is a web application
 firewall (WAF), a component placed in front of the application that
 inspects each request and blocks the ones it considers malicious.
 
-Most production WAFs decide with signatures and regular expressions.
-ModSecurity with the OWASP Core Rule Set~\cite{owaspcrs} is the best-known
-example. Rules are fast, deterministic and easy to audit. Their weakness is
-that they match the text of a payload and not its effect. An attacker who
-inserts inline comments, changes letter case or applies URL encoding twice
-can send a payload that behaves the same on the server and no longer
-matches the rule. When defenders tighten the rules to catch these variants,
-more legitimate requests are blocked. Applications with single-page front
-ends, WebSocket channels and frequent polling produce many unusual but
-harmless requests, so this tuning work is heavy.
+Most production WAFs still decide with signatures and regular expressions,
+ModSecurity with the OWASP Core Rule Set~\cite{owaspcrs} being the usual
+example. Rules run fast, give the same answer every time and can be read by
+an auditor. The trouble is that they look at the text of a payload rather
+than at what it does. Put an inline comment inside \texttt{UNION}, mix upper
+and lower case, or URL-encode the payload twice, and the server executes the
+same statement while the rule stays silent. Tightening the rules to catch
+these variants usually blocks real users as well, and modern front ends make
+this worse: WebSocket polling, asset loading and background API calls all
+produce requests that look odd to a rule engine. Our own deployment needed a
+safelist for exactly these routes (Section~\ref{sec:arch}).
 
-Learning-based detection tries to model the structure of malicious payloads
-directly. Transformer language
-models~\cite{vaswani2017attention,devlin2019bert} suit the task because an
-HTTP request can be treated as a sequence of tokens, and a fine-tuned
-encoder can use the context around each token. Several recent studies take
-this approach and report accuracy or F1 above $99\%$ on
+Learned detectors try to recognise the shape of an attack instead of its
+exact spelling. Transformer encoders~\cite{vaswani2017attention,devlin2019bert}
+fit this idea, since a request line can be tokenised like a sentence and each
+token is then read together with the others. Several recent papers do this
+and report accuracy or F1 above $99\%$ on
 CSIC~2010~\cite{wadbert2026,scireports2024novelxsssqli}.
 
 The two kinds of error do not cost the same. A missed attack is rare but
@@ -115,25 +115,24 @@ produces ten thousand wrongful blocks daily. For this reason we treat the
 false-positive rate as a main metric, and the decision policy in this paper
 is designed to control it.
 
-Published transformer detectors are still some distance from a firewall
-that can be deployed. Nearly all of them are evaluated offline: a model is
-trained and tested on a fixed corpus and one accuracy figure is reported.
-Three questions are left open. The first is cost: how much latency does
-inference add when every request waits for it, and what throughput is
-possible? The second is false-positive control: an operator cares about how
-many legitimate users are blocked at a chosen threshold, which these papers
-seldom report. The third is generalisation: a model trained and tested on
-one synthetic corpus may fail on different traffic, and without a transfer
-test nothing can be said about new attacks or new applications.
+Those numbers come from offline runs: a model is trained on a fixed split,
+scored once, and the paper ends there. Running the same model as a firewall
+raises questions the offline setting never meets, and we focus on three.
+(i) Cost. Every request now waits for inference, so how much latency is
+added, and how many requests per second can one process take? (ii) False
+positives. An operator picks a threshold and then lives with the number of
+legitimate users blocked at it; published work rarely gives this figure.
+(iii) Transfer. CSIC is synthetic, and a detector tested only on CSIC says
+little about the traffic of another site.
 
 This paper studies these questions with a working system. Our contributions
 are as follows.
 \begin{itemize}
-\item \emph{An inline architecture.} A transformer classifier is placed in
-the enforcement path with the Nginx \texttt{auth\_request} mechanism, so
-every request is checked before it is proxied and the protected application
-is unchanged. We measure the inference cost this adds
-(Sections~\ref{sec:arch} and~\ref{sec:results}).
+\item \emph{Inline deployment.} The classifier sits behind Nginx's
+\texttt{auth\_request} directive: Nginx asks the detection service about
+each request before proxying it, and the application itself is not touched.
+We report what this costs in latency (Sections~\ref{sec:arch}
+and~\ref{sec:results}).
 \item \emph{A four-tier fusion policy.} Direct signatures, anomaly rules and
 banded model scores are combined with an endpoint safelist and a fail-open
 safeguard, and the policy is given as an algorithm
@@ -163,35 +162,34 @@ Section~\ref{sec:conclusion} concludes.
 %=======================================================================
 \section{Literature Survey}
 \label{sec:related}
-We group prior work into four themes and note, for each, the limitation
-that matters for our design. Most of the cited work is from 2023 or later;
-older sources are kept where they are the standard reference for a model or
-dataset. Kheddar~\cite{kheddar2025survey} surveys transformers and large
-language models for intrusion detection and reports accuracies of 85--99\%
-for BERT- and GPT-style models on CSIC~2010, CICIDS2017 and UNSW-NB15. The
-same survey lists deployment efficiency and explainability as open
-problems. Table~\ref{tab:related} compares representative approaches.
+We sort the related work into four groups and, for each, say which
+limitation shaped our design. Most citations are from 2023 onward; older
+papers appear only where they are the original source of a model or a
+dataset. For a wider view, Kheddar~\cite{kheddar2025survey} reviews
+transformer and LLM detectors for intrusion detection. Across CSIC~2010,
+CICIDS2017 and UNSW-NB15 the accuracies it collects range from 85 to 99\%,
+and it names deployment efficiency and explainability as unsolved.
+Table~\ref{tab:related} puts the main approaches side by side.
 
 \subsection{Rule-based and signature WAFs}
-ModSecurity with the OWASP Core Rule Set~\cite{owaspcrs} is the reference
-point for practical web defence. It is a curated set of signatures and
-scoring rules. Such systems are transparent and fast, but they match syntax
-and not semantics. Encoding and comment insertion defeat them, and
-hardening the rules increases false positives. They are a necessary
-baseline and a natural first tier, but they are not sufficient alone.
+In practice, web defence usually means ModSecurity running the OWASP Core
+Rule Set~\cite{owaspcrs}, a maintained collection of signatures plus an
+anomaly score. It is quick, and every decision can be traced to a rule.
+Because it matches syntax, though, encoding tricks and inserted comments get
+through, and each attempt to close those gaps adds false positives. We keep a
+rule engine as a baseline and as our first tier, but on its own it is not
+enough.
 
-Rule maintenance is a continuing cost. A CRS deployment runs at a paranoia
-level, and each higher level catches more obfuscation and also matches more
-legitimate traffic. Operators then write exclusion rules for each
-application, and the number of exclusions grows with the application.
-Signatures are rarely removed, because removing one may reopen an attack.
-Over time the behaviour of the detector on a given application depends on a
-large global rule base and a local exclusion list that few people
-understand fully. This operational burden is a strong argument for learning
-what benign traffic looks like from the application's own requests. It is
-also why we keep signatures only in their most precise form, as Tier~1,
-where the matched payloads have no legitimate meaning and no exclusion list
-is needed.
+Keeping such a rule set usable is ongoing work. CRS runs at a chosen
+paranoia level; going up a level catches more obfuscated payloads and also
+flags more normal traffic, so operators add exclusions per application, and
+the exclusion list grows with every new route. Old signatures are almost
+never deleted, since nobody wants to reopen an attack that was once covered.
+After a few years, how the WAF treats a site depends on a large global rule
+base plus a local list of exceptions that no one person fully knows. This is
+the practical case for learning normal traffic from the site itself. It is
+also why our Tier~1 holds only signatures whose matches cannot be
+legitimate, so that it needs no exclusions.
 
 \subsection{Classical machine learning for web attack detection}
 A second group of studies extracts features from HTTP requests and trains
@@ -254,15 +252,14 @@ synthetic and old. A newer dataset records thirty days of malicious
 requests blocked by a production ModSecurity server~\cite{modsec30day2025}
 and helps with the shortage of recent real-traffic data.
 
-The failure we observe when a CSIC-trained detector meets unfamiliar
-traffic is known from network intrusion detection. Cross-dataset studies
-report near-perfect within-dataset accuracy that falls close to chance when
-training and test traffic come from different
-networks~\cite{cantone2024crossdataset}, and the size of the drop depends
-on the features used and the time between
-collections~\cite{venkatesan2026crossdataset}. Our transfer experiments add
-a WAF-specific question: can a deterministic rule layer recover the lost
-accuracy, and does it do so on every corpus?
+Network intrusion detection has met this problem before. Cantone et
+al.~\cite{cantone2024crossdataset} report models that are close to perfect
+inside one dataset falling to near chance on traffic from another network,
+and Venkatesan~\cite{venkatesan2026crossdataset} finds that the size of the
+drop varies with the feature set and with the time between captures. For a
+WAF there is an extra part to the question, which our transfer experiments
+take up: if the learned model fails on new traffic, can a deterministic rule
+layer win back the loss, and does it do so on every corpus?
 
 Related domains use the same encoder on other sequences. BERT has been
 applied to log anomaly detection~\cite{guo2021logbert} and to
@@ -278,28 +275,25 @@ explainability methods for intrusion detection~\cite{xai_ids_2025} are
 rarely connected to WAF decisions.
 
 \subsection{Datasets and benchmarks}
-The choice of dataset explains part of the high accuracy reported in this
-literature. CSIC~2010~\cite{gimenez2010csic} is an HTTP corpus generated
-against an e-commerce application, with labelled normal and anomalous
-requests. It is small enough to fine-tune on in minutes, and most methods
-in Table~\ref{tab:survey} can be compared on it. Its main weakness is that
-the benign traffic comes from templates. A limited set of request patterns
-is repeated thousands of times with different parameter values, so
-near-duplicate requests are common. If the data is split at random without
-removing duplicates, close variants of one request can appear in both the
-training and the test set, and a model can score well by memorising
-templates. We remove duplicates on the normalised request text before
-splitting, and we believe this partly explains why our F1 is lower than
-published figures.
+Dataset choice deserves attention, because it accounts for part of the
+very high accuracy in this literature. CSIC~2010~\cite{gimenez2010csic} was
+generated against an e-commerce application and labels each request as
+normal or anomalous. It is small (fine-tuning takes minutes), and nearly
+every method in Table~\ref{tab:survey} reports on it. The catch is how its
+benign traffic was made: a modest set of request templates, each filled in
+with many parameter values. After we normalised the requests and removed
+exact duplicates, $9{,}492$ unique requests were left. A random split taken
+before that step puts near-copies of one request on both sides, and a model
+can then score well by remembering templates. We deduplicate first, and we
+think this is one reason our F1 is below the published figures.
 
-ECML/PKDD~2007~\cite{pkdd2007} is older than CSIC and masks the target
-application, which limits its use today. SR-BH~2020~\cite{srbh2020}, which
-we use for transfer testing, is different in kind. It was captured from a
-live honeypot, so it contains the irregular request shapes, encodings and
-crawler noise of real deployments. Such corpora are scarce. The standard
-benchmark is far from the traffic that current single-page applications
-produce, and results on it, including our own within-corpus results, should
-be read with that in mind.
+ECML/PKDD~2007~\cite{pkdd2007} predates CSIC and hides the target
+application, so it is little used now. SR-BH~2020~\cite{srbh2020}, our first
+transfer corpus, comes from a honeypot exposed to the internet; its normal
+traffic includes crawler probes, odd encodings and malformed paths that no
+generator would produce. Public corpora of this kind are rare. CSIC is far
+from what a modern single-page application sends, and our own within-corpus
+numbers carry that caveat too.
 
 \subsection{Research gap}
 Across these themes the pattern is the same: transformer detectors are
@@ -343,32 +337,27 @@ rule engine and the transformer, and the protected backend application
 WAF, and nothing changes for the client.
 
 \subsection{Inline interception via \texttt{auth\_request}}
-Detection is not embedded in the proxy. Instead, the Nginx
-\texttt{auth\_request} directive turns each incoming request into an
-internal sub-request to the detection service. The proxy passes the
-original URI, query string, method and client address as headers. The
-detection service answers with an HTTP status that Nginx reads as an
-authorisation decision. A \texttt{2xx} reply allows the request and Nginx
-proxies it to the backend. A \texttt{403} denies it and the client receives
-a block response. The mechanism is synchronous, so no request reaches the
-backend before the detection service has decided.
+We do not run detection inside Nginx. The main \texttt{location /} block
+contains \texttt{auth\_request /\_waf\_check}, and that internal location
+forwards to the detection service's \texttt{/analyze} endpoint with
+\texttt{proxy\_pass\_request\_body off}. The original URI, query string,
+method and client address travel as headers. If \texttt{/analyze} answers
+\texttt{200}, Nginx forwards the request to the backend; on \texttt{403} the
+client gets the block page. Nginx waits for this answer, so nothing reaches
+the backend unchecked.
 
-This choice differs from the two usual designs. In the ModSecurity model
-the detector runs inside the proxy process. A model upgrade then requires a
-proxy reload, a model crash can bring the proxy down, and the proxy's
-worker model limits the runtime the detector can use. In the appliance
-model the detector is a separate reverse-proxy hop. Every request crosses
-one more network hop, and a detector failure cuts all traffic. The
-\texttt{auth\_request} pattern lies between these. The detection service is
-a separate container with its own runtime, scaling and failure domain, yet
-the decision stays synchronous and neither the backend nor the client needs
-any change. The sub-request carries only metadata and not the proxied body,
-which limits its cost. The fail-open policy is implemented at the same
-point: if the sub-request times out or returns an unexpected status, Nginx
-treats the request as allowed, so a detector fault does not become an
-outage of the application. Replacing the model checkpoint, or the whole
-detection stack, is a rolling restart of one container behind an unchanged
-proxy configuration.
+Two other placements are common, and we avoided both. ModSecurity runs
+inside the proxy process: a new model means reloading the proxy, a crashing
+model takes the proxy down with it, and the model has to fit the proxy's
+worker design. An appliance placed as an extra reverse-proxy hop adds a
+network hop to every request and, when it fails, stops all traffic. With
+\texttt{auth\_request} the detector has its own container, scales and fails
+separately, and still answers synchronously, while neither backend nor
+client changes. Only headers are sent, never the body, which keeps each
+check small. Fail-open is set at this point as well: a timeout or an
+unexpected status from the sub-request is treated as an allow, so a broken
+detector does not take the site down. Upgrading the model means restarting
+that one container; the Nginx configuration stays as it is.
 
 \begin{figure}[t]
 \centering
@@ -441,8 +430,7 @@ sub-request (2) via Nginx's \texttt{auth\_request} mechanism to the
 detection service container, whose four tiers run in sequence before a
 verdict (3) is returned and the request is proxied to the backend if
 allowed (4); the backend container only ever sees requests that passed all
-four tiers. The dashed path shows the fail-open safeguard: any unhandled
-error in the detection path degrades to an allow decision.}
+four tiers. Dashed line: on an unhandled error the service returns 200 (fail-open).}
 \label{fig:arch}
 \end{figure}
 
@@ -461,20 +449,18 @@ pipeline. Safe internal endpoints such as static assets and real-time
 channels are checked against Tier~1 only, and any unhandled error fails
 open.
 
-The order of the tiers follows cost and certainty. The cheapest evidence is
-checked first, so the model runs only on requests the deterministic tiers
-did not settle, and a request stopped early costs microseconds of string
-matching instead of milliseconds of inference. The order also follows how
-easily a verdict can be checked. A Tier~1 verdict can be verified by
-reading the matched signature and a Tier~2 verdict by re-evaluating a few
-boolean conditions. A Tier~3 score can only be checked against the model,
-which is why Tier~4 treats it as evidence that needs support from a rule.
-We considered the opposite order, with the model first and the rules used
-to veto its mistakes. We rejected it because it puts the inference cost on
-every request and makes the least auditable component the gatekeeper. With
-the chosen order, an outdated Tier~1 signature blocks before the model can
-overrule it. We limit Tier~1 to payloads with no legitimate reading so that
-this cost stays small.
+We ordered the tiers by cost. String matching takes microseconds and
+inference takes milliseconds, so the model only sees requests the rules
+could not settle. The order also tracks how easy a verdict is to check
+afterwards: a Tier~1 block is confirmed by reading one signature, a Tier~2
+block by re-evaluating a few booleans, but a Tier~3 score only by running the
+model again. That is why Tier~4 wants a rule signal before it acts on a
+score. Putting the model first, with rules vetoing its mistakes, was
+considered and dropped, because every request would pay for inference and
+the hardest component to audit would make the first call. The downside of
+our order is that a stale Tier~1 signature can block something the model
+would have let through; keeping Tier~1 to payloads with no legitimate
+reading limits that risk.
 
 \begin{figure}[t]
 \centering
@@ -499,45 +485,46 @@ this cost stays small.
   \draw (t4) edge node[right,font=\scriptsize]{yes} (block);
   \draw (t4) edge node[left,font=\scriptsize]{no} (allow);
 \end{tikzpicture}
-\caption{Decision flow. Cheap deterministic tiers short-circuit obvious cases;
-the transformer and fusion tier adjudicate the ambiguous remainder.}
+\caption{Decision flow. Tiers 1 and 2 settle clear cases cheaply; only the rest reaches the model and the fusion step.}
 \label{fig:flow}
 \end{figure}
 
 \subsection{Endpoint-aware relaxation and fail-open}
-Two policies make the pipeline practical in deployment. The first is a
-safelist of internal endpoints: static assets, real-time channels such as
-WebSocket polling, and framework routes. Requests to these endpoints are
-checked against the Tier~1 signatures only. These routes produce a large
-volume of unusual but benign traffic and rarely accept user-controlled
-input, so exempting them from the anomaly rules and the model removes many
-false positives without widening the attack surface much. The second
-policy is fail-open. Any unhandled exception in the detection path, such as
-a malformed header, a model that fails to load or an inference error, makes
-the service return an allow decision, so a fault in the WAF cannot take
-down the application. Fail-open is a sensible default for a component that
-must not reduce availability, but it weakens protection while it is active,
-and its activation rate must be monitored.
+Two policies were added when we ran the WAF in front of a real
+application. The first is a safelist of route prefixes
+(\texttt{SAFE\_ENDPOINTS} in the service code): \texttt{/socket.io/},
+static-file prefixes such as \texttt{/assets/}, \texttt{/css/},
+\texttt{/js/} and \texttt{/fonts/}, the dashboard, and the application's
+\texttt{/rest/} and \texttt{/api/} prefixes. Requests under these prefixes
+are checked against Tier~1 only. Without the safelist, Socket.IO polling
+URIs, with parameters such as \texttt{EIO=} and \texttt{transport=}, went
+through the anomaly rules and the model even though they carry no user
+payload. The second policy is fail-open: any exception in the detection path
+(a malformed header, a model that did not load, a failed inference) returns
+an allow, so a WAF fault cannot become an outage. The price is that
+protection drops quietly while this happens, so the rate has to be
+watched.
 
-The safelist is the part of the design most open to misuse. Its entries are
-exact route prefixes and not patterns. An endpoint belongs on it only if it
-does not accept user input that reaches an interpreter: a static-asset
-route or a health check qualifies, a search or login route does not. The
-safelist is not a bypass, because Tier~1 still applies and an unambiguous
-payload in a polling URI is blocked. It only removes the two probabilistic
-layers, whose false positives are concentrated on high-volume unusual
-routes. Entries are configuration and not code, so they can accumulate
-during incidents and never be reviewed. The list should be checked against
-the application's routing table in the same maintenance cycle as the
-threshold replay described in Section~\ref{sec:discussion}.
+The safelist is also the weakest point of the design. Entries are
+prefixes, not patterns, and in the configuration we evaluated the
+\texttt{/rest/} and \texttt{/api/} entries are too broad: they cover routes
+that do take user input, for example the user routes under
+\texttt{/rest/user/} in the test application. On those routes only Tier~1
+applies, so an injection that avoids every direct signature would pass. The
+main results are not affected, since CSIC~2010 paths start with
+\texttt{/tienda1/}, but a production deployment should narrow the list to
+routes that never hand input to an interpreter. Because the list is
+configuration, it also tends to grow during incidents, and it should be
+checked against the routing table whenever thresholds are re-tuned
+(Section~\ref{sec:discussion}).
 
 %=======================================================================
 \section{Implementation and Deployment}
 \label{sec:impl}
-The system runs as three Docker containers managed by Compose on a private
-bridge network. The whole WAF (edge proxy, detection service and a target
-backend) starts with one command and can be placed in front of another
-application by changing one environment variable.
+Everything is packaged as three Docker containers on a private Compose
+network: Nginx, the detection service and a sample backend. One
+\texttt{docker compose up} starts the stack, and pointing the WAF at another
+application only means changing the backend address in the environment.
 
 \subsection{Edge proxy}
 The edge is standard Nginx with an internal \texttt{location} that backs
@@ -545,53 +532,47 @@ the \texttt{auth\_request} directive. For each external request Nginx sends
 a sub-request to the detection service with the original URI, query string,
 method and client address in \texttt{X-Original-*} headers. The upstream
 status, a \texttt{2xx} or a \texttt{403}, becomes an allow or deny
-decision, and only allowed requests are proxied. The backend host and port
-come from environment variables, which keeps the WAF independent of the
-application.
+decision, and only allowed requests are proxied. Backend host and port are filled into the Nginx configuration template from the environment.
 
 \subsection{Detection service}
-The detection service is a FastAPI application served by Uvicorn. At
-startup it loads the fine-tuned encoder and tokenizer once and keeps them
-in memory. Each \texttt{/analyze} call runs the four-tier pipeline of
-Section~\ref{sec:arch} and returns only a status code, which keeps the
-response small. The service also offers a token-authenticated statistics
-and log API. The thresholds $(\tau_h,\tau_\ell)$, the safelist, the
-special-character limit and the model path are set through environment
-variables, so the operating point can be tuned without code changes.
-Inference runs on CPU or GPU.
+The detection service is written with FastAPI and served by Uvicorn. Model
+and tokenizer are loaded once, at startup, and kept in memory. A call to
+\texttt{/analyze} runs the four tiers and returns nothing but a status code;
+a separate token-protected API exposes statistics and recent logs.
+Thresholds are read from the environment
+(\texttt{AI\_CONFIDENCE\_THRESHOLD}, default $0.98$, for $\tau_h$, and
+\texttt{UNCERTAINTY\_THRESHOLD}, default $0.90$, for $\tau_\ell$), as are the
+special-character limit (\texttt{MAX\_ALLOWED\_SPECIAL\_CHARS}, default
+$10$) and the base model, so changing the operating point needs a restart
+but no code change. The same container runs on CPU or GPU.
 
-Two implementation choices affect the measured behaviour. First, the model
-is loaded once and shared. The per-request cost in
-Table~\ref{tab:latency} therefore includes no loading time, while a
-deployment that scales by process pays the model's memory footprint in each
-replica, which is the main sizing limit on small hosts. Second, the whole
-pipeline runs inside one exception boundary whose handler returns
-\texttt{200}. A failure in any tier, such as a header that breaks decoding,
-a missing model file or an out-of-memory error during inference, turns that
-request into an allow and not an error page. Each such event increments a
-counter exposed by the statistics API. A deployment in which this counter
-rises is effectively protected by Tier~1 only, and the dashboard shows this
-condition.
+Loading the model once has a side effect: the latencies in
+Table~\ref{tab:latency} contain no loading time, but scaling out by process
+repeats the model's memory footprint in every replica, which limits how many
+replicas a small host can hold. Fail-open is implemented as one
+\texttt{try}/\texttt{except} around the whole pipeline, with a handler that
+returns \texttt{200}. Whatever breaks inside (a header that cannot be
+decoded, a missing model file, running out of GPU memory), the request is
+allowed instead of getting an error page, and a counter in the statistics
+API goes up. If that counter keeps climbing, only Tier~1 is really
+protecting the site, and the dashboard shows it.
 
 \subsection{Observability}
-A small dashboard polls the statistics API and shows live request volume,
-block rate, counts per attack class and a table of recent decisions. Every
-decision is written as a structured JSON record with the timestamp, client,
-method, URI, decision, reason and model probability, in a form that can be
-forwarded to a SIEM. This is an engineering convenience and not a research
-contribution, but it is what makes the operating point and the fail-open
-behaviour measurable in practice.
+A small dashboard polls the statistics API and shows request volume, block
+rate, counts per attack class and the latest decisions. Each decision is also
+written as one JSON line (timestamp, client, method, URI, decision, reason,
+model probability), which a SIEM can ingest as is. We count this as
+engineering rather than research, but without it we could not have measured
+the operating point or the fail-open rate.
 
-The log schema serves two readers. For a security analyst, each record
-contains the decision, the tier that produced it, the rule or score band
-responsible and enough request metadata to reconstruct the event without
-other systems. For the operator of the service, the aggregate views answer
-health questions: the fail-open activation rate, the share of decisions
-made by each tier, and the score distribution on allowed traffic. A drift
-of allowed-traffic scores towards the block band is an early sign of the
-benign-drift failure that the SR-BH transfer shows in an extreme form. None
-of these quantities needs instrumentation beyond the decision path itself,
-so observability does not add to the latency budget.
+Two kinds of reader use these logs. An analyst looking at one event finds
+the decision, the tier and the rule or score band behind it, plus enough of
+the request to reconstruct what happened. An operator looks at totals: how
+often fail-open fires, how many decisions each tier makes, and how scores on
+allowed traffic are spread. Scores on allowed traffic creeping towards the
+block band mean benign traffic is drifting, the same failure SR-BH shows in
+extreme form. All of this is a by-product of the decision path, so logging
+adds no latency.
 
 \subsection{Reproducibility}
 The detection logic evaluated offline in Section~\ref{sec:results} is the
@@ -699,22 +680,20 @@ The request is URL-decoded twice to expose encoded payloads. Runs of digits
 are replaced by one placeholder token so that the model does not overfit to
 identifiers. The \texttt{METHOD URI} string is then tokenised with the
 WordPiece vocabulary of the base model, with a maximum length of $256$
-tokens. The same preprocessing is used in training, in evaluation and in
-the deployed service.
+tokens. Training, offline evaluation and the live service all call the same preprocessing function.
 
-Each step has a reason. Decoding twice matches a known attacker technique:
-a payload encoded twice passes a detector that decodes once. A second pass
-is enough in practice because servers also decode a limited number of
-times. Collapsing digits removes a shortcut. CSIC requests contain session
-identifiers, product numbers and timestamps whose exact values can
-correlate with the label in a template-based corpus, and a model that sees
-raw digits may learn that a certain identifier range is malicious. The
-placeholder keeps the fact that a number was present and removes its value.
-Tokenising with the encoder's own vocabulary splits attack syntax into
-subword units for which the pretrained model already has embeddings, so
-fine-tuning adapts existing representations. The $256$-token limit covers
-nearly all request lines in the corpora used here. When truncation occurs
-it removes the end of the query string and keeps the path.
+Some notes on these choices. Attackers often encode a payload twice because
+many filters decode only once; our second pass undoes that, and a third pass
+adds little because web servers themselves stop decoding after a couple of
+rounds. Digit collapsing targets a CSIC-specific risk. Its requests carry
+session IDs, product numbers and timestamps, and in a corpus built from
+templates these values can line up with the label, so a model that sees raw
+digits may simply learn which ranges are malicious. With the placeholder the
+model still knows a number was there, just not which one. Using the
+encoder's own WordPiece vocabulary splits attack syntax into sub-words that
+already have pretrained embeddings. Nearly every request line in our corpora
+fits in $256$ tokens; when one does not, truncation cuts the end of the query
+string and keeps the path.
 
 \subsection{Model}
 The classifier is a pretrained transformer encoder with a linear head over
@@ -771,22 +750,19 @@ double-decoded URI so that percent-encoding does not hide them. A Tier~1
 match blocks at once with confidence $1.0$, which is why this tier is safe
 to apply to safelisted endpoints as well.
 
-Tier~2 uses weaker signals with wider coverage. It computes the boolean
-signals of Eq.~\eqref{eq:fusion}. The keyword signal $s_{\text{kw}}$ fires
-on SQL and script vocabulary such as \texttt{UNION}, \texttt{SELECT},
-\texttt{alert} or \texttt{onerror}. The injection-pattern signal
-$s_{\text{inj}}$ fires on structural combinations such as a quote followed
-by a boolean operator. The encoding signal $s_{\text{enc}}$ fires when the
-request only parses sensibly after several decoding passes, which is a sign
-of deliberate obfuscation. The character-anomaly signal $s_{\text{ca}}$ is
-based on the density of characters that are rare in legitimate paths. No
-keyword or character-anomaly signal blocks alone. The word \texttt{select}
-appears in ordinary query parameters, so these signals act only together
-with another signal or with a model score band. The transfer results in
-Section~\ref{sec:results} show how this calibration behaves on other
-corpora. On SR-BH~2020 it holds and rescues a failing model. On the 2025
-production corpus the signals often do not fire on newer payloads, and the
-rule layer becomes the cause of failure.
+Tier~2 trades precision for coverage. It computes the boolean signals of
+Eq.~\eqref{eq:fusion}: $s_{\text{kw}}$ fires on SQL and script words such
+as \texttt{UNION}, \texttt{SELECT}, \texttt{alert} or \texttt{onerror};
+$s_{\text{inj}}$ on structures like a quote followed by a boolean operator;
+$s_{\text{enc}}$ when a request only makes sense after more than one
+decoding pass, usually a sign of deliberate obfuscation; and $s_{\text{ca}}$
+when the number of special characters exceeds the configured limit. Neither
+the keyword signal nor the character-anomaly signal can block alone, since
+\texttt{select} turns up in ordinary query strings; they need a second rule
+signal or a model score in the right band. Section~\ref{sec:results} tests
+how well this calibration travels. On SR-BH~2020 it holds and saves a
+failing model. On the 2025 production corpus the signals often stay silent
+on newer payloads, and the rule layer becomes the problem.
 
 \subsection{Decision fusion}
 The fusion tier (Algorithm~\ref{alg:fusion}) first blocks on an unambiguous
@@ -843,24 +819,20 @@ model-dependent cases gives the rules-only decision used for the ``rules
 only'' rows.
 
 \subsection{Worked examples}
-Four requests show how the tiers share the work. The request
-\texttt{GET /products?id=1' OR '1'='1} stops at Tier~1. The tautology is a
-direct signature, the verdict is BLOCK with confidence $1.0$, and the model
-is never called. A request carrying
-\texttt{id=1\%2527\%2520UNION\%2520SELECT} passes Tier~1 in raw form but
-not after double decoding, where the keyword and injection-pattern signals
-both fire, so it is blocked at Tier~2 without the model. A mutated payload
-that passes both deterministic tiers, for instance an SQL injection
-rewritten with inline comments so that no keyword matches cleanly, reaches
-Tier~3, where the model usually scores it well above $\tau_h$. It is
-blocked if any rule signal fired. In our evasion runs the
-character-anomaly signal usually did, because comment-based obfuscation
-raises the density of rare characters. Finally, a benign but unusual
-request, such as a long polling URI full of encoded punctuation, may
-receive a score in $[\tau_\ell,\tau_h)$. It is allowed unless a keyword or
-character anomaly supports the model. Blocking mid-band scores only with
-such support is where most of the hybrid's false-positive control comes
-from, compared with a single threshold.
+Four requests illustrate the division of work.
+\texttt{GET /products?id=1' OR '1'='1} contains a direct signature and is
+blocked at Tier~1 with confidence $1.0$; the model never runs.
+\texttt{id=1\%2527\%2520UNION\%2520SELECT} looks harmless until it is decoded
+twice, after which the keyword and injection signals both fire and Tier~2
+blocks it, again without the model. An SQL injection rewritten with inline
+comments may slip past both rule tiers; the model then usually scores it well
+above $\tau_h$, and it is blocked as long as some rule signal fired. In our
+evasion runs that was nearly always the character-anomaly signal, because
+comments add rare characters. Last, a harmless but strange request, say a
+long polling URI full of encoded punctuation, can land in
+$[\tau_\ell,\tau_h)$; it goes through unless a keyword or character anomaly
+backs the score. Most of the hybrid's false-positive control, compared with
+a single threshold, comes from this rule for mid-band scores.
 
 The examples also show what the policy cannot block. A request with no rule
 signal is always allowed, whatever its model score. An attack that is
@@ -1047,9 +1019,7 @@ attacks carry the lexical evidence the signatures look for, so a policy
 that relies on rule signals for detection cannot exceed that level on the
 attacks the model misses. The model's FPR of $0.064$ is the lower limit for
 any policy that blocks whenever the model does, because adding more
-blocking conditions can only add false positives. Our fusion lies below the
-model alone on both measures, and the difference is the price of requiring
-rule support on this corpus.
+blocking conditions can only add false positives. On CSIC our fusion ends up worse than the model alone on both F1 and FPR, and that gap is what requiring rule support costs here.
 
 \begin{table}[t]
 \centering
@@ -1067,10 +1037,11 @@ Hybrid      & 0.884 & 0.817 & 0.849 & 0.229 \\
 \end{table}
 
 \subsection{Confusion structure}
-Fig.~\ref{fig:cm} shows the confusion matrices for the model alone and the
-hybrid. The model misclassifies $29$ benign and $68$ malicious requests out
-of $1{,}424$. The hybrid blocks $75$ more benign requests and misses $109$
-more malicious requests than the model, so both kinds of error grow.
+Fig.~\ref{fig:cm} gives the two confusion matrices. The model alone gets
+$29$ benign and $68$ malicious requests wrong out of $1{,}424$. With the
+rule layer, $75$ more benign requests are blocked and $109$ more attacks
+are missed, so both error counts rise. The second number is the surprising
+one.
 
 The extra misses need an explanation. If the hybrid simply blocked whenever
 either the rules or the model fired, its recall could not be lower than the
@@ -1154,29 +1125,24 @@ a larger encoder on the same input.
 \end{figure}
 
 \subsection{Threshold sensitivity and false-positive control}
-The transformer outputs a probability, so an operator can trade recall
-against false positives by moving the decision threshold.
-Fig.~\ref{fig:threshold} shows both as the threshold moves from $0.50$ to
-$0.98$. Recall falls from $0.930$ to $0.880$, and FPR falls from $0.064$ to
-$0.026$. An operator who favours precision can run the model at
-$\tau=0.98$ and remove more than half of the benign blocks for a loss of
-five points of recall. The best F1 is at $\tau=0.50$ (F1~$0.949$,
-FPR~$0.064$).
+Because the model outputs a probability, the threshold works as a dial
+between recall and false positives. Fig.~\ref{fig:threshold} traces both
+from $\tau=0.50$ to $0.98$: recall goes from $0.930$ down to $0.880$, FPR
+from $0.064$ down to $0.026$. Run at $0.98$, the model blocks fewer than half
+as many benign requests and loses five points of recall. F1 peaks at
+$\tau=0.50$ ($0.949$, with FPR $0.064$).
 
-Recall declines slowly and almost linearly across the sweep. The model
-gives most true attacks a score very close to $1.0$, and raising the
-threshold only removes the minority that were scored with moderate
-confidence. FPR falls in steps, with the largest drop between $\tau=0.80$
-and $\tau=0.90$. This points to a group of benign requests scored in that
-range, which are unusual but legitimate requests of the kind the safelist
-is meant for. The band $[\tau_\ell,\tau_h)=[0.90,0.98)$ of
-Eq.~\eqref{eq:fusion} covers the upper part of the region where benign and
-malicious scores overlap. Requiring rule support there removes most of the
-overlapping benign requests and keeps the attacks, whereas a single
-threshold in that region must give up one or the other. The sweep also
-shows the limit of threshold tuning. Even at $\tau=0.98$ the model-only FPR
-is $0.026$, so a false-positive budget well below one percent cannot be met
-by moving $\tau$ and needs the safelist, rule support or both.
+Recall barely moves across the sweep, so most attacks must be scored close
+to $1.0$; raising the bar only drops the few scored with moderate
+confidence. FPR does not fall smoothly. Its biggest step is between $0.80$
+and $0.90$, which points to a group of benign requests scored in that range,
+unusual but legitimate, much like the traffic the safelist was built for.
+Our band $[\tau_\ell,\tau_h)=[0.90,0.98)$ covers the upper part of the
+overlap between benign and malicious scores, and inside it we block only
+with rule support; a single threshold there would have to give up either
+attacks or benign requests. The sweep also shows where tuning stops
+helping. At $0.98$ the model still has an FPR of $2.6\%$, so a target well
+below one percent needs the safelist, rule support, or both.
 
 \begin{figure}[t]
 \centering
@@ -1202,32 +1168,29 @@ CSIC~2010. Recall is nearly flat; FPR falls by more than half as $\tau\to0.98$.}
 \end{figure}
 
 \subsection{Latency}
-Table~\ref{tab:latency} reports single-request inference latency on the
-Tesla~T4. The median is $12.7$~ms and the $p99$ is $18.2$~ms. Throughput
-for one inference process follows from the mean latency $\bar\ell$ in
-milliseconds,
+Table~\ref{tab:latency} lists inference latency for one request at a time
+on the Tesla~T4: median $12.7$~ms, $p99$ $18.2$~ms. For a single process
+the throughput is
 \begin{equation}
 \mathrm{RPS} = \frac{1000}{\bar\ell},
 \label{eq:rps}
 \end{equation}
-which gives about $82$ requests per second per process. Batching and more
-worker processes raise the total. Inference is therefore fast enough to run
-synchronously in the request path of a moderate-traffic service. Distilled
-and quantised models (Section~\ref{sec:discussion}) are the natural option
-for higher throughput or CPU-only hosts.
+with $\bar\ell$ the mean latency in milliseconds, i.e.\ about $82$ requests
+per second. Batching and extra workers raise that. For a site with moderate
+traffic this is fast enough to sit in the request path; a distilled or
+quantised model is the next step for heavier traffic or CPU-only machines
+(Section~\ref{sec:discussion}).
 
-Three qualifications apply. First, the gap between the median and the $p99$
-comes from GPU scheduling and occasional longer token sequences. A
-service-level objective should be set against the tail, because that is
-what a waiting user experiences. Second, the figure covers model inference
-only and was measured offline. It excludes the Nginx sub-request round
-trip, request serialisation and the rule tiers. The rule tiers are string
-operations that take microseconds, but the proxy hop has not been measured,
-and measuring it through the live \texttt{auth\_request} path is future
-work. Third, Eq.~\eqref{eq:rps} describes one synchronous process. Requests
-that stop at Tier~1, Tier~2 or the safelist never reach the model, so the
-mean cost per request in production is lower than the figure in
-Table~\ref{tab:latency}, by an amount that depends on the traffic.
+These figures need three caveats. The $p99$ is about $5.5$~ms above the
+median, which we attribute to GPU scheduling and the occasional long
+request; a latency target should be set on the tail, since that is what the
+slowest users see. The measurement covers model inference only, taken
+offline, and leaves out the Nginx sub-request, serialisation and the rule
+tiers. The rule tiers are plain string operations, but the proxy hop itself
+has not been timed yet. Finally, Eq.~\eqref{eq:rps} is for one synchronous
+process. Requests stopped at Tier~1, Tier~2 or the safelist never reach the
+model, so in production the average cost per request will be lower than the
+table shows, by an amount that depends on the traffic mix.
 
 \begin{table}[t]
 \centering
@@ -1315,16 +1278,15 @@ an earlier fine-tuning run than the main results. GPU training is not fully
 deterministic even with a fixed seed, so the reference row differs slightly
 from the BERT row of Table~\ref{tab:main}, and we report it as measured.
 
-The transformer alone fails on SR-BH. Its FPR rises to $1.00$, which means
-it flags nearly every request as malicious, and precision falls to $0.429$.
-A detector in this state cannot be used in production whatever its recall.
-The hybrid on the same requests is stable, with F1~$0.971$, FPR~$0.0005$
-and precision~$0.999$. The deterministic tiers do not depend on statistics
-learned from CSIC and are not affected by the shift in the same way. Taken
-alone, this result is the strongest argument for the layered design.
-Section~\ref{sec:secondcorpus} shows that it does not hold on a second
-corpus. Only the CSIC$\to$SR-BH direction was tested, and no model was
-fine-tuned on SR-BH (Section~\ref{sec:threats}).
+On SR-BH the model on its own breaks down. FPR reaches $1.00$, meaning
+almost every request is flagged, and precision drops to $0.429$; whatever
+its recall, nobody could deploy it in that state. The hybrid, given the very
+same requests, gets F1~$0.971$ with FPR~$0.0005$ and precision~$0.999$. The
+rule tiers learned nothing from CSIC, so the shift does not hit them the
+same way. Were this our only transfer test, it would be the best evidence
+for keeping the rule layer. It is not, and Section~\ref{sec:secondcorpus}
+shows the opposite on another corpus. We tested only CSIC$\to$SR-BH, and no
+model was trained on SR-BH (Section~\ref{sec:threats}).
 
 The failure has a specific form. With an FPR of $1.00$, every benign SR-BH
 request looks anomalous to a detector whose idea of benign traffic was
@@ -1378,19 +1340,17 @@ show that the effect of the rule layer on generalisation depends on the
 corpus. A deployment cannot assume the SR-BH result will hold for its own
 traffic.
 
-It is worth being exact about what this reversal affects. It does not
-weaken the case for the model: in both transfers the encoder's ranking
-held, with a loss of calibration on SR-BH and no loss on the 2025 corpus.
-It does not affect Tier~1, whose direct signatures behave the same on every
-corpus and are involved in neither failure. What fails is the link between
-model confidence and the Tier~2 signals in the $s_{\text{has}}$ condition.
-Its two inputs age differently: model calibration degrades when benign
-traffic drifts, and rule signals degrade when attack styles drift. A policy
-that needs both to agree fails when either one has degraded. This reading
-places the repair in one branch of Eq.~\eqref{eq:fusion}. It also gives a
-testable prediction: updating the Tier~2 signals should recover most of the
-lost recall on the 2025 corpus without retraining the model
-(Section~\ref{sec:future}).
+This reversal should not be over-read. The model is not the problem: its
+ranking survived both transfers, with calibration lost on SR-BH and nothing
+lost on the 2025 data. Tier~1 is not the problem either, since direct
+signatures behave the same everywhere and play no part in either failure.
+The weak link is the $s_{\text{has}}$ condition, which ties a model score to
+Tier~2 signals. Those two inputs go stale for different reasons
+(calibration suffers when benign traffic changes, rule signals when attack
+styles change), and the condition fails as soon as either one has. If this
+reading is right, refreshing the Tier~2 signals alone, with the model left
+as it is, should bring back most of the recall lost on the 2025 corpus.
+That is the first experiment listed in Section~\ref{sec:future}.
 
 \begin{table}[t]
 \centering
@@ -1408,29 +1368,25 @@ CSIC~$\to$~ModSecurity-2025 (hybrid)     & 0.151 \\
 \end{table}
 
 \subsection{Comparison with recent published results}
-Table~\ref{tab:priorcompare} places our figures beside recent transformer
-and deep-learning detectors. Reported results on CSIC~2010 are typically
-above $99\%$~\cite{wadbert2026,scireports2024novelxsssqli}, higher than our
-F1 of $0.949$. One likely reason is data leakage. CSIC~2010's benign
-traffic repeats a small number of request patterns thousands of times. If
-duplicates and near-duplicates are not removed before splitting, very
-similar benign requests fall in both the training and the test set, and a
-classifier can score well partly because it has seen the test data. We
-remove duplicates on the normalised text before splitting
-(Section~\ref{sec:method}), which leaves a smaller and harder test set of
-about $9.5$k requests in total. Most of the compared studies do not
-describe their deduplication, so we cannot confirm that this explains the
-whole gap, but it is a plausible cause, and our figure should be read as an
-estimate under stricter conditions.
+Table~\ref{tab:priorcompare} sets our numbers next to recent transformer
+and deep-learning detectors. On CSIC~2010 they report above
+$99\%$~\cite{wadbert2026,scireports2024novelxsssqli}; we get an F1 of
+$0.949$. We suspect leakage explains part of the difference. Benign CSIC
+traffic repeats a few request patterns thousands of times, and unless
+near-copies are removed before the split, the test set holds requests the
+model has in effect already seen. We remove duplicates first
+(Section~\ref{sec:method}), which leaves $9{,}492$ requests and a harder
+test set. Most of the cited papers do not say how, or whether, they
+deduplicated, so we cannot show that this accounts for the whole gap; our
+figure is best read as a stricter estimate.
 
-The comparison is also one of scope. Those studies report within-corpus
-classification without an inline constraint, FPR at a threshold, a latency
-measurement or an evasion test, and our figures come with these
-measurements. A fair comparison would fix the deduplication procedure, the
-split and the seed before comparing architectures, and would report FPR
-with accuracy. Until such practice is common, tables that compare accuracy
-across papers, including Table~\ref{tab:priorcompare}, reflect differences
-in evaluation protocol as well as differences between detectors.
+Scope differs too. The cited studies measure classification inside one
+corpus and stop there; none gives FPR at a chosen threshold, latency, or an
+evasion test, which are the measurements our system was built around.
+Comparing architectures fairly would need the same deduplication, split and
+seed, with FPR reported beside accuracy. Until that is common practice, a
+table such as Table~\ref{tab:priorcompare} compares evaluation protocols at
+least as much as it compares detectors.
 
 \begin{table}[t]
 \centering
@@ -1575,76 +1531,69 @@ depends on the number of detection-service replicas behind the proxy, which
 we do not evaluate.
 
 \subsection{Position within defence in depth}
-A WAF is one layer of defence in depth. Our system inspects the request
-line at the edge. It does not replace input validation and parameterised
-queries in the application, which remain the correct fix for injection, and
-it does not replace egress monitoring. Our results suggest it is best used
-as a measurable and tunable filtering layer. It removes most commodity
-attack traffic before the application sees it, at a latency cost we have
-measured and a false-positive cost that can be controlled, and its verdict
-log gives the layers behind it a view of incoming attacks.
+A WAF is one layer among several. Ours looks only at the request line, at
+the edge. Input validation and parameterised queries inside the application
+remain the real fix for injection, and egress monitoring catches things no
+request filter can. Where our system fits is as a filter whose cost and
+error rate are known: it strips most routine attack traffic before the
+application sees it, its latency has been measured, its false-positive rate
+can be tuned, and its log tells the layers behind it what is being tried.
 
-The transfer results support this position. A detector whose behaviour can
-change sharply on unfamiliar traffic should not be the only control in
-front of an unvalidated application. An application with sound internal
-defences can tolerate an occasional miss by the WAF and still benefits from
-the reduced noise and the telemetry. The fail-open policy fits this view,
-since it assumes that a short absence of the WAF is survivable.
-Deployments that cannot accept this should use the fail-closed variant,
-which is a configuration flag, and should expect some availability
-incidents in exchange.
+The transfer results argue against asking more of it. Its behaviour can
+swing on unfamiliar traffic, so it should not be the only thing in front of
+an application that does no validation of its own. An application with solid
+internal defences, by contrast, loses little from an occasional WAF miss and
+still gains the noise reduction and the telemetry. Fail-open only makes
+sense under this view, since it accepts that the WAF may briefly be absent.
+Where that is not acceptable, Nginx can be set to fail closed instead, at
+the cost of some availability incidents.
 
 \subsection{Auditability and fusion alternatives}
-Every block made by the fusion policy can be explained in one sentence. A
-Tier~1 block names the matched signature. A Tier~2 block names the pair of
-signals. A model-driven block gives the score band and the supporting
-signal. This matters in operation, because a wrongly blocked user becomes a
-support case. The log record for a decision contains its full
-justification, and an operator who disputes a block can replay the branch
-of Eq.~\eqref{eq:fusion} that fired.
+Each block can be explained in one line. Tier~1 names the signature that
+matched, Tier~2 the two signals, and a model block the score band plus the
+rule signal that supported it. This matters because every wrong block turns
+into a support ticket. The log line already holds the full reason, and an
+operator who disputes a block can replay the branch of
+Eq.~\eqref{eq:fusion} that fired.
 
-This property comes from keeping the fusion in closed form, and the obvious
-alternatives would lose part of it. A learned fusion, such as logistic
-regression or a small tree over the rule signals and the model score, would
-probably beat the fixed policy on any single corpus. The 2025 result
-suggests it might also have learned to give less weight to outdated rule
-signals. Its decisions, however, would be weights and not reasons, and its
-own calibration would be one more thing that can drift. An intermediate
-option replaces the hard $s_{\text{has}}$ condition with a weighted vote
-whose weights are set from the logged trigger rates of each tier. This
-keeps explanations simple and lets the requirement for rule support relax
-when a signal becomes less precise. Our evaluation identifies the two
-failure modes any such design must handle: mass false positives from an
-uncalibrated model, and blocked true positives from outdated signals.
-Choosing between the alternatives is left to the experiments of
-Section~\ref{sec:future}.
+Keeping the fusion as a fixed formula is what makes this possible, and the
+obvious alternatives give some of it up. A learned combiner, say a logistic
+regression or a small decision tree over the rule signals and the score,
+would probably beat our fixed policy on any one corpus, and judging by the
+2025 result it might learn to discount stale rule signals. Its output,
+though, would be a set of weights rather than a reason, and its calibration
+would drift like everything else. A middle option keeps the formula but
+swaps the hard $s_{\text{has}}$ condition for a weighted vote, with weights
+taken from each tier's logged trigger rates; explanations stay short, and a
+signal counts for less once it loses precision. Whatever is chosen has to
+survive the two failures we saw: floods of false positives from a badly
+calibrated model, and correct detections held back by outdated signals. We
+leave the choice to the experiments in Section~\ref{sec:future}.
 
 \subsection{Operational tuning guidance}
-An operator has three controls. The first is the threshold pair
-$(\tau_\ell,\tau_h)$. The sweep in Section~\ref{sec:results} shows that
-recall changes little over a wide range of thresholds while FPR changes a
-lot. The pair should therefore be tuned against a false-positive budget in
-business terms, such as wrongly blocked requests per day on the operator's
-own traffic, and not against F1 on a benchmark. In practice the service can
-run in log-only mode for a period. The recorded scores and signals are then
-replayed offline under candidate thresholds, and the strictest pair whose
-projected FPR stays within the budget is chosen. Because
-Eq.~\eqref{eq:fusion} is deterministic given the logs, the replay needs no
-new inference.
+Operators have three settings to work with. The first is the threshold
+pair $(\tau_\ell,\tau_h)$. In the sweep of Section~\ref{sec:results} recall
+stays almost flat while FPR moves a lot, so the pair should be set against
+a false-positive budget stated in business terms, for example wrongly
+blocked requests per day on the operator's own site, not against F1 on a
+benchmark. One way is to run the WAF in log-only mode for a while, replay
+the logged scores and signals offline under different thresholds, and pick
+the strictest pair that stays inside the budget. Eq.~\eqref{eq:fusion} is
+deterministic given the logs, so the replay needs no new inference.
 
-The second control is the safelist. Each added endpoint removes a source of
-false positives and reduces model coverage. The exchange is worthwhile only
-for routes without user-controlled input. A safelist entry for a route that
-accepts free-text parameters is a gap in protection.
+The second setting is the safelist. Each prefix added removes some false
+positives and also removes model coverage for that route, which is only a
+good trade when the route takes no user input. As noted in
+Section~\ref{sec:arch}, our own \texttt{/rest/} and \texttt{/api/} entries
+are wider than that.
 
-The third control is the rule set, and here the two transfer results point
-in different directions. A deployment whose benign traffic resembles CSIC's
-structured, form-based requests can keep the shipped calibration. A
-deployment serving API-heavy traffic should expect to recalibrate the
-character-anomaly and keyword signals before trusting the rule tiers to
-block alone. The per-tier trigger-rate logs described in
-Section~\ref{sec:impl} allow this recalibration to be based on observed
-counts.
+The third is the rule set, and here our two transfer results pull in
+different directions. A site whose normal traffic resembles CSIC
+(structured, form-driven requests) can probably keep the shipped
+calibration. A site serving mostly API calls should expect to recalibrate
+the keyword and character-anomaly signals before letting the rule tiers block
+alone, guided by the per-tier trigger counts in the logs
+(Section~\ref{sec:impl}).
 
 \subsection{Retraining and lifecycle}
 A deployed detector loses accuracy over time. Attack vocabulary changes,
@@ -1680,25 +1629,24 @@ third corpus such as ECML/PKDD~2007~\cite{pkdd2007}, fine-tune on each
 corpus in turn and test both directions. We regard this as the most
 important extension.
 
-\emph{Construct validity.} Per-class labels are assigned heuristically from
-payload keywords, so the breakdown in Fig.~\ref{fig:perclass} is
-indicative. Deduplication on the normalised text removes exact duplicates
-and slightly changes the class balance compared with the raw data, as
-reported in Table~\ref{tab:datasets}.
+\emph{Construct validity.} The attack-class labels behind
+Fig.~\ref{fig:perclass} were assigned from payload keywords, not by hand, so
+the per-class split is approximate. Deduplicating on normalised text also
+shifts the class balance slightly relative to the raw data;
+Table~\ref{tab:datasets} gives the numbers.
 
-\emph{Internal validity.} The main results come from one fine-tuning run.
-We observed run-to-run variation when repeating training with the same seed
-(F1 of $0.966$ in one run and $0.949$ in another), because GPU training is
-not fully deterministic. Confidence intervals from repeated runs would
-strengthen the claims. The classical baselines and the transformer share
-preprocessing and splits.
+\emph{Internal validity.} Each headline number comes from one fine-tuning
+run. Retraining with the same seed gave F1 $0.966$ once and $0.949$ another
+time, because GPU kernels are not fully deterministic, so the true spread is
+unknown and repeated runs with confidence intervals are still owed.
+Baselines and transformer share preprocessing and splits.
 
-\emph{Adversarial scope.} The six mutation families are not exhaustive. A
-search-based or learning-based adversary~\cite{advsqli2024} could be
-stronger, and the near-zero evasion figures apply to these common
-transformations only. The protocol also mutates only payloads the detector
-initially blocked. It measures the robustness of existing detections and
-says nothing about attacks the detector never caught.
+\emph{Adversarial scope.} Six mutation families are a small sample of what
+attackers do. A search-based or learned attacker~\cite{advsqli2024} could
+well do better, and our near-zero evasion rates hold for these six
+transformations only. We also mutated only payloads that were blocked to
+begin with, so the test shows how stable existing detections are, not how
+many attacks were missed in the first place.
 
 \emph{Conclusion validity.} Three explanations in this paper are inferences
 from the measurements and were not confirmed by dedicated experiments: the
@@ -1736,29 +1684,25 @@ recalibrated rule layer no longer lowers the hybrid's recall, the failure
 was outdated calibration and the architecture is sound. If the failure
 remains, the fusion condition gives too much weight to rule signals that
 carry little information on API-style traffic, which would favour a
-weighted fusion. Learning the fusion function from data, with the rule
-signals and the model score as features, covers both outcomes and replaces
-fixed thresholds with an operating curve, at some cost to the auditability
-of Eq.~\eqref{eq:fusion}.
+weighted fusion. A fusion learned over the rule signals and the score would cover both outcomes and give an operating curve instead of fixed thresholds, though its decisions would be harder to explain than Eq.~\eqref{eq:fusion}.
 
-Third, the choice of encoder has not been explored, although the training
-code supports it. SecureBERT is pretrained on cybersecurity text and may
-adapt better to attack syntax, and DistilBERT has half the depth, which is
-relevant to CPU deployment. Measuring accuracy and latency for the three
-encoders, and for a quantised variant, would make the discussion of
-deployment cost quantitative.
+Third, we have not compared encoders, although the training script
+already accepts them. SecureBERT was pretrained on security text and might
+handle attack syntax better; DistilBERT has half as many layers, which
+matters for CPU deployment. Accuracy against latency for the three, plus a
+quantised model, would put numbers on the deployment-cost discussion.
 
-Fourth, the measurements can be extended in two directions. End-to-end
-latency through the live Nginx \texttt{auth\_request} path would separate
-the inline cost into model inference, serialisation and proxy overhead.
-Extending inspection from the request line to headers and bodies would
-bring POST-based attacks into scope, with a much larger input whose effect
-on accuracy and on the $256$-token limit is unknown.
+Fourth, two measurements are missing. We have not timed a request end to
+end through the live \texttt{auth\_request} path, which would split the
+inline cost into inference, serialisation and proxy overhead. And the
+detector reads only the request line; adding headers and bodies would cover
+POST-borne attacks, but the input would grow a lot, and we do not yet know
+what that does to accuracy or to the $256$-token limit.
 
-Fifth, the lifecycle question of Section~\ref{sec:discussion} needs a
-long-term study: running the system on live traffic for months, logging the
-drift signals proposed there and measuring how detection quality declines
-between retraining events.
+Fifth, retraining policy (Section~\ref{sec:discussion}) can only be settled
+by running the system on live traffic for months, logging the drift signals
+described there, and watching how detection quality falls between
+retraining rounds.
 
 Two smaller extensions remain. Training with several seeds and reporting
 the variance would put confidence intervals on the main metrics, at a cost
@@ -1789,15 +1733,14 @@ styles. The value of the rule layer is therefore not a fixed property of
 the architecture. It depends on the corpus, and a deployment must check it
 on its own traffic.
 
-Three points follow for practitioners. Transformer inference is affordable
-inline, at a median of $12.7$~ms on modest hardware, so latency is no
-longer a reason to keep learned detection out of the blocking path.
-Engineering effort is best spent on false-positive control, for which score
-bands, an endpoint safelist and rule-supported fusion give concrete
-controls with measured costs. No configuration should be moved to blocking
-mode on a new deployment without a log-only period on that deployment's
-traffic, because both the learned and the deterministic layers carry
-assumptions about the traffic they were built on.
+For practitioners we would stress three things. Inference at a median of
+$12.7$~ms on a T4 is cheap enough that latency is no longer a reason to keep
+a learned model out of the blocking path. The harder work is false-positive
+control, and score bands, a safelist and rule-supported fusion are concrete
+levers whose costs we measured. Whatever the configuration, a new deployment
+should spend some time in log-only mode on its own traffic before it blocks
+anything, because both the model and the rules carry assumptions about the
+traffic they were built on.
 
 For researchers, the evaluation sequence used here can be applied to other
 transformer-WAF proposals: within-corpus evaluation on deduplicated data,
