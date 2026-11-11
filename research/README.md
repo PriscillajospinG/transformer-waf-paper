@@ -5,6 +5,14 @@ paper reads. All experiments share ONE data schema and reuse the SAME rule
 engine (`waf_rules.py`) that the deployed WAF runs, so the ablation and the
 live system agree.
 
+## Easiest way: one Colab notebook
+
+Open `colab/Q1_experiments.ipynb` in Google Colab (File → Upload notebook, or
+open it from GitHub), select a T4 GPU and run the cells top to bottom. It runs
+every step below, saves to Google Drive, skips finished steps after a
+disconnect, and downloads `results_q1.zip` at the end. The commands below are
+the same steps for running by hand.
+
 ## Install
 
 ```bash
