@@ -39,12 +39,16 @@ Usage
       --input data/raw/pkdd2007.csv --url-col request --label-col label \
       --dataset pkdd2007 --out data/processed/pkdd2007.parquet
 
+  python prepare_datasets.py --source modsec_audit --input data/raw/owasp.zip \
+      --dataset modsec2025 --out data/processed/modsec2025.parquet
+
   python prepare_datasets.py --split data/processed/csic2010.parquet \
       --out-dir data/splits/csic2010
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -143,6 +147,84 @@ def load_csic_raw(normal_path: str, anomaly_path: str) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# ModSecurity audit logs (e.g. the 2025 Zenodo capture, record 17178461)
+# ---------------------------------------------------------------------------
+def _iter_text_files(path: str):
+    """Yield (name, text) for a file, a folder, or a .zip of audit logs."""
+    import zipfile
+    if os.path.isdir(path):
+        for root, _, files in os.walk(path):
+            for f in sorted(files):
+                fp = os.path.join(root, f)
+                with open(fp, "r", encoding="latin-1", errors="replace") as fh:
+                    yield fp, fh.read()
+    elif zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as z:
+            for n in sorted(z.namelist()):
+                if not n.endswith("/"):
+                    yield n, z.read(n).decode("latin-1", errors="replace")
+    else:
+        with open(path, "r", encoding="latin-1", errors="replace") as fh:
+            yield path, fh.read()
+
+
+_SECTION = re.compile(r"^--[0-9A-Za-z]+-([A-Z])--$")
+
+
+def parse_modsec_audit(path: str) -> pd.DataFrame:
+    """
+    Extract (method, uri) from ModSecurity audit logs. Handles:
+      * native serial format: the request line is the first line of each
+        '--<id>-B--' section, and a request body (if logged) is in '-C--'
+      * JSON audit logs: transaction.request.request_line (+ body if present)
+    Every extracted request is labelled malicious (the capture holds only
+    blocked requests). Run --split afterwards; the whole set becomes test.
+    """
+    rows = []
+    for name, text in _iter_text_files(path):
+        lines = text.splitlines()
+        if lines and lines[0].lstrip().startswith("{"):
+            for ln in lines:
+                try:
+                    j = json.loads(ln)
+                except ValueError:
+                    continue
+                req = (j.get("transaction") or j).get("request", {})
+                rl = req.get("request_line") or ""
+                m = _REQ_LINE.match(rl.strip())
+                if m:
+                    body = req.get("body") or ""
+                    if isinstance(body, list):
+                        body = "".join(body)
+                    uri = m.group(2) + (("&" if "?" in m.group(2) else "?") + body.strip() if body.strip() else "")
+                    rows.append({"method": m.group(1).upper(), "raw_uri": uri, "label": 1})
+            continue
+        section, cur, body = None, None, ""
+        for ln in lines + ["--end-Z--"]:
+            sm = _SECTION.match(ln.strip())
+            if sm:
+                if section == "C" and cur is not None and body.strip():
+                    cur["raw_uri"] += ("&" if "?" in cur["raw_uri"] else "?") + body.strip()
+                section, body = sm.group(1), ""
+                if section == "B":
+                    cur = None
+                continue
+            if section == "B" and cur is None and ln.strip():
+                m = _REQ_LINE.match(ln.strip())
+                if m:
+                    cur = {"method": m.group(1).upper(), "raw_uri": m.group(2), "label": 1}
+                    rows.append(cur)
+            elif section == "C":
+                body += ln.strip()
+    df = pd.DataFrame(rows, columns=["method", "raw_uri", "label"])
+    if df.empty:
+        raise ValueError("no request lines found - send a sample of the log format")
+    df["raw_uri"] = df["raw_uri"].str.replace(r"^https?://[^/]+", "", regex=True)
+    print(f"parsed {len(df)} requests from {path}")
+    return df
+
+
+# ---------------------------------------------------------------------------
 # Generic CSV loader (CSIC CSV, PKDD, FWAF, etc.)
 # ---------------------------------------------------------------------------
 def load_csv(path: str, url_col: str, label_col: str | None, dataset: str,
@@ -213,7 +295,7 @@ def make_splits(parquet_path: str, out_dir: str,
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--source", choices=["csic_raw", "csv"])
+    ap.add_argument("--source", choices=["csic_raw", "csv", "modsec_audit"])
     ap.add_argument("--normal"); ap.add_argument("--anomaly")
     ap.add_argument("--input"); ap.add_argument("--url-col"); ap.add_argument("--label-col")
     ap.add_argument("--method-col"); ap.add_argument("--dataset", default="custom")
@@ -236,6 +318,8 @@ def main():
 
     if args.source == "csic_raw":
         df = load_csic_raw(args.normal, args.anomaly)
+    elif args.source == "modsec_audit":
+        df = _finalize(parse_modsec_audit(args.input), args.dataset)
     elif args.source == "csv":
         df = load_csv(args.input, args.url_col, args.label_col,
                       args.dataset, args.method_col,
