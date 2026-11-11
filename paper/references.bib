@@ -1,18 +1,5 @@
-% ============================================================
-% References for the Transformer-WAF papers.
-%
-% Policy (updated 2026-08-03, per explicit user request): the 2023+ recency
-% policy applies to the LITERATURE SURVEY / related-work citations, which
-% are all 2023 or later. Foundational model and dataset papers that this
-% work is directly BUILT ON (BERT, the Transformer architecture, RoBERTa,
-% DistilBERT, TinyBERT, SecureBERT's original 2022/2023 paper, CSIC 2010,
-% PKDD 2007, SR-BH, BM25, WAF-A-MoLE, LogBERT, HTTP2vec) have been added
-% back below, even where older than 2023, because these are attribution
-% citations (crediting the technique/dataset used) rather than recency
-% claims, which is standard practice and exempt from a "recent literature"
-% cutoff at every venue. See paper/BIBLIOGRAPHY_NOTE.md for the full
-% history of what was removed and re-added and why.
-% ============================================================
+% References for the Transformer-WAF papers. Every entry was checked
+% against the publisher, arXiv or an index record (DBLP, DOAJ, PMC).
 
 @article{aghaei2025securebert2,
   title={{SecureBERT 2.0}: Advanced Language Model for Cybersecurity Intelligence},
@@ -90,17 +77,16 @@
   year={2025}
 }
 
-% ============================================================
-% Recent (2023+) works for the literature survey.
-% VERIFY author lists / DOIs against the source before submission.
-% ============================================================
+
 
 @article{zhou2025ewebguard,
   title={{E-WebGuard}: Enhanced neural architectures for precision web attack detection},
   author={Zhou, Luchen and Yau, Wei-Chuen and Gan, Yee Siang and Liong, Sze-Teng},
   journal={Computers \& Security},
-  volume={149},
+  volume={148},
+  pages={104127},
   year={2025},
+  doi={10.1016/j.cose.2024.104127},
   publisher={Elsevier}
 }
 
@@ -108,18 +94,18 @@
   title={Transformers and large language models for efficient intrusion detection systems: A comprehensive survey},
   author={Kheddar, Hamza},
   journal={Information Fusion},
-  volume={124},
   year={2025},
   publisher={Elsevier},
-  note={arXiv:2408.07583}
+  doi={10.1016/j.inffus.2025.103347}
 }
 
 @article{yang2025bertids,
   title={{BERT}-based network for intrusion detection system},
-  author={Yang, Y. and Peng, X.},
+  author={Yang, Yong and Peng, Xing},
   journal={EURASIP Journal on Information Security},
   volume={2025},
   year={2025},
+  doi={10.1186/s13635-025-00191-w},
   publisher={Springer}
 }
 
@@ -163,13 +149,6 @@
   year={2024}
 }
 
-@article{prasetyo2025webserver,
-  title={Classification of Cyber Attack and Anomaly in Web Server Using Transformer and Transfer Learning},
-  author={Prasetyo and others},
-  journal={Indonesian Journal of Electronics, Electromedical Engineering, and Medical Informatics},
-  year={2025}
-}
-
 @article{modsec30day2025,
   title={A Thirty-Day Dataset of Malicious {HTTP} Requests Blocked by {OWASP} {ModSecurity} on a Production Web Server},
   author={Lucz, Geza and Forstner, Bertalan},
@@ -182,20 +161,6 @@
   note={doi:10.3390/data10110186; dataset: doi:10.5281/zenodo.17178461}
 }
 
-@article{webshell2024,
-  title={Enhancing Webshell Detection With Deep Learning-Powered Methods},
-  author={Anonymous},
-  journal={arXiv preprint arXiv:2412.05532},
-  year={2024}
-}
-
-@article{payloadml2024svmrfxgb,
-  title={Detection of {SQL} Injection, {XSS}, and Command Injection Attacks in Web Payloads Using {SVM}, Random Forest, and {XGBoost}},
-  author={Author and others},
-  journal={Journal of Information Systems and Informatics},
-  year={2024}
-}
-
 @article{genxss2025,
   title={{GenXSS}: an {AI}-Driven Framework for Automated Detection of {XSS} Attacks in {WAF}s},
   author={Babaey, Vahid and Ravindran, Arun},
@@ -203,10 +168,7 @@
   year={2025}
 }
 
-% ============================================================
-% Foundational model / dataset references (re-added 2026-08-03 per
-% explicit user request). Attribution citations, not recency claims.
-% ============================================================
+
 
 @inproceedings{vaswani2017attention,
   title={Attention is all you need},
@@ -292,9 +254,12 @@
 
 @article{srbh2020,
   title={A new multi-label dataset for Web attacks {CAPEC} classification using machine learning techniques},
-  author={Riera, Tom{\'a}s Sureda and Higuera, Juan Ram{\'o}n Bermejo and Higuera, Javier Bermejo and Montalvo, Juan Antonio Sicilia},
+  author={Sureda Riera, Tom{\'a}s and Bermejo Higuera, Juan Ram{\'o}n and Bermejo Higuera, Javier and Mart{\'\i}nez Herraiz, Jos{\'e}-Javier and Sicilia, Juan Antonio},
   journal={Computers \& Security},
+  volume={120},
+  pages={102788},
   year={2022},
+  doi={10.1016/j.cose.2022.102788},
   publisher={Elsevier},
   note={SR-BH 2020 dataset paper; traffic collected 2020, published 2022}
 }
@@ -309,13 +274,16 @@
 @article{cantone2024crossdataset,
   title={On the Cross-Dataset Generalization of Machine Learning for Network Intrusion Detection},
   author={Cantone, Marco and Marrocco, Claudio and Bria, Alessandro},
-  journal={arXiv preprint arXiv:2402.10974},
-  year={2024}
+  journal={IEEE Access},
+  volume={12},
+  pages={144489--144508},
+  year={2024},
+  doi={10.1109/ACCESS.2024.3472907}
 }
 
 @article{venkatesan2026crossdataset,
   title={Cross-Dataset Temporal and Semantic Generalization of Intrusion Detection Models for the Future Internet},
-  author={Venkatesan, Vivek},
+  author={Elangovan, Rajesh and others},
   journal={Future Internet},
   volume={18},
   number={4},
@@ -323,4 +291,438 @@
   year={2026},
   publisher={MDPI},
   note={doi:10.3390/fi18040194}
+}
+
+% ---------------- Web attacks, WAFs and their evaluation ----------------
+@misc{owasptop10,
+  title={{OWASP} Top 10:2021},
+  author={{OWASP Foundation}},
+  howpublished={\url{https://owasp.org/Top10/}},
+  year={2021}
+}
+
+@inproceedings{halfond2006sqli,
+  title={A Classification of {SQL}-Injection Attacks and Countermeasures},
+  author={Halfond, William G. J. and Viegas, Jeremy and Orso, Alessandro},
+  booktitle={Proceedings of the IEEE International Symposium on Secure Software Engineering (ISSSE)},
+  year={2006}
+}
+
+@inproceedings{kruegel2003anomaly,
+  title={Anomaly Detection of Web-based Attacks},
+  author={Kruegel, Christopher and Vigna, Giovanni},
+  booktitle={Proceedings of the 10th ACM Conference on Computer and Communications Security (CCS)},
+  pages={251--261},
+  year={2003}
+}
+
+@article{axelsson2000baserate,
+  title={The Base-Rate Fallacy and the Difficulty of Intrusion Detection},
+  author={Axelsson, Stefan},
+  journal={ACM Transactions on Information and System Security},
+  volume={3},
+  number={3},
+  pages={186--205},
+  year={2000}
+}
+
+@inproceedings{appelt2014mutation,
+  title={Automated Testing for {SQL} Injection Vulnerabilities: An Input Mutation Approach},
+  author={Appelt, Dennis and Nguyen, Cu Duy and Briand, Lionel C. and Alshahwan, Nadia},
+  booktitle={Proceedings of the International Symposium on Software Testing and Analysis (ISSTA)},
+  pages={259--269},
+  year={2014}
+}
+
+@article{appelt2018evolutionary,
+  title={A Machine-Learning-Driven Evolutionary Approach for Testing Web Application Firewalls},
+  author={Appelt, Dennis and Nguyen, Cu D. and Panichella, Annibale and Briand, Lionel C.},
+  journal={IEEE Transactions on Reliability},
+  volume={67},
+  number={3},
+  pages={733--757},
+  year={2018}
+}
+
+% ---------------- Deep learning for web requests ----------------
+@inproceedings{liang2017rnn,
+  title={Anomaly-Based Web Attack Detection: A Deep Learning Approach},
+  author={Liang, Jingxi and Zhao, Wen and Ye, Wei},
+  booktitle={Proceedings of the 6th International Conference on Network, Communication and Computing (ICNCC)},
+  pages={80--85},
+  publisher={ACM},
+  year={2017}
+}
+
+@article{saxe2017expose,
+  title={{eXpose}: A Character-Level Convolutional Neural Network with Embeddings for Detecting Malicious {URLs}, File Paths and Registry Keys},
+  author={Saxe, Joshua and Berlin, Konstantin},
+  journal={arXiv preprint arXiv:1702.08568},
+  year={2017}
+}
+
+@article{vartouni2019deepwaf,
+  title={Leveraging Deep Neural Networks for Anomaly-Based Web Application Firewall},
+  author={Moradi Vartouni, Ali and Teshnehlab, Mohammad and Sedighian Kashi, Saeed},
+  journal={IET Information Security},
+  volume={13},
+  number={4},
+  pages={352--361},
+  year={2019},
+  doi={10.1049/iet-ifs.2018.5404}
+}
+
+@inproceedings{kuang2019deepwaf,
+  title={{DeepWAF}: Detecting Web Attacks Based on {CNN} and {LSTM} Models},
+  author={Kuang, Xiaohui and others},
+  booktitle={Cyberspace Safety and Security (CSS 2019)},
+  series={Lecture Notes in Computer Science},
+  volume={11983},
+  publisher={Springer},
+  year={2019},
+  doi={10.1007/978-3-030-37352-8_11}
+}
+
+@article{tekerek2021cnn,
+  title={A Novel Architecture for Web-Based Attack Detection Using Convolutional Neural Network},
+  author={Tekerek, Adem},
+  journal={Computers \& Security},
+  volume={100},
+  pages={102096},
+  year={2021},
+  doi={10.1016/j.cose.2020.102096}
+}
+
+@article{shahid2022framework,
+  title={An Enhanced Deep Learning Based Framework for Web Attacks Detection, Mitigation and Attacker Profiling},
+  author={Shahid, Waleed Bin and Aslam, Baber and Abbas, Haider and Khalid, Saad Bin and Afzal, Hammad},
+  journal={Journal of Network and Computer Applications},
+  volume={198},
+  pages={103270},
+  year={2022}
+}
+
+@article{dawadi2023lstmwaf,
+  title={Deep Learning Technique-Enabled Web Application Firewall for the Detection of Web Attacks},
+  author={Dawadi, Babu R. and Adhikari, Bibek and Srivastava, Devesh Kumar},
+  journal={Sensors},
+  volume={23},
+  number={4},
+  pages={2073},
+  year={2023},
+  doi={10.3390/s23042073}
+}
+
+@article{priatna2024transformer,
+  title={Network Intrusion Detection Using Transformer Models and Natural Language Processing for Enhanced Web Application Attack Detection},
+  author={Priatna, Wowon and Sembiring, Irwan and Setiawan, Adi and Setyawan, Iwan and Warta, Joni and Lestari, Tyastuti Sri},
+  journal={Jurnal Nasional Pendidikan Teknik Informatika (JANAPATI)},
+  volume={13},
+  number={3},
+  year={2024},
+  doi={10.23887/janapati.v13i3.82462}
+}
+
+% ---------------- Language models and tooling ----------------
+@article{wu2016gnmt,
+  title={Google's Neural Machine Translation System: Bridging the Gap between Human and Machine Translation},
+  author={Wu, Yonghui and others},
+  journal={arXiv preprint arXiv:1609.08144},
+  year={2016}
+}
+
+@inproceedings{wolf2020transformers,
+  title={Transformers: State-of-the-Art Natural Language Processing},
+  author={Wolf, Thomas and others},
+  booktitle={Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations},
+  pages={38--45},
+  year={2020}
+}
+
+@inproceedings{paszke2019pytorch,
+  title={{PyTorch}: An Imperative Style, High-Performance Deep Learning Library},
+  author={Paszke, Adam and others},
+  booktitle={Advances in Neural Information Processing Systems (NeurIPS)},
+  volume={32},
+  year={2019}
+}
+
+@article{pedregosa2011sklearn,
+  title={Scikit-learn: Machine Learning in {Python}},
+  author={Pedregosa, Fabian and others},
+  journal={Journal of Machine Learning Research},
+  volume={12},
+  pages={2825--2830},
+  year={2011}
+}
+
+@inproceedings{loshchilov2019adamw,
+  title={Decoupled Weight Decay Regularization},
+  author={Loshchilov, Ilya and Hutter, Frank},
+  booktitle={International Conference on Learning Representations (ICLR)},
+  year={2019}
+}
+
+@article{hinton2015distilling,
+  title={Distilling the Knowledge in a Neural Network},
+  author={Hinton, Geoffrey and Vinyals, Oriol and Dean, Jeff},
+  journal={arXiv preprint arXiv:1503.02531},
+  year={2015}
+}
+
+@inproceedings{jacob2018quantization,
+  title={Quantization and Training of Neural Networks for Efficient Integer-Arithmetic-Only Inference},
+  author={Jacob, Benoit and others},
+  booktitle={Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+  pages={2704--2713},
+  year={2018}
+}
+
+% ---------------- Classical learning and evaluation ----------------
+@article{cortes1995svm,
+  title={Support-Vector Networks},
+  author={Cortes, Corinna and Vapnik, Vladimir},
+  journal={Machine Learning},
+  volume={20},
+  number={3},
+  pages={273--297},
+  year={1995}
+}
+
+@article{breiman2001rf,
+  title={Random Forests},
+  author={Breiman, Leo},
+  journal={Machine Learning},
+  volume={45},
+  number={1},
+  pages={5--32},
+  year={2001}
+}
+
+@inproceedings{joachims1998text,
+  title={Text Categorization with Support Vector Machines: Learning with Many Relevant Features},
+  author={Joachims, Thorsten},
+  booktitle={Proceedings of the European Conference on Machine Learning (ECML)},
+  series={Lecture Notes in Computer Science},
+  volume={1398},
+  pages={137--142},
+  year={1998}
+}
+
+@article{fawcett2006roc,
+  title={An Introduction to {ROC} Analysis},
+  author={Fawcett, Tom},
+  journal={Pattern Recognition Letters},
+  volume={27},
+  number={8},
+  pages={861--874},
+  year={2006}
+}
+
+@article{saito2015pr,
+  title={The Precision-Recall Plot Is More Informative than the {ROC} Plot When Evaluating Binary Classifiers on Imbalanced Datasets},
+  author={Saito, Takaya and Rehmsmeier, Marc},
+  journal={PLOS ONE},
+  volume={10},
+  number={3},
+  pages={e0118432},
+  year={2015}
+}
+
+@article{he2009imbalanced,
+  title={Learning from Imbalanced Data},
+  author={He, Haibo and Garcia, Edwardo A.},
+  journal={IEEE Transactions on Knowledge and Data Engineering},
+  volume={21},
+  number={9},
+  pages={1263--1284},
+  year={2009}
+}
+
+@article{chandola2009anomaly,
+  title={Anomaly Detection: A Survey},
+  author={Chandola, Varun and Banerjee, Arindam and Kumar, Vipin},
+  journal={ACM Computing Surveys},
+  volume={41},
+  number={3},
+  pages={15:1--15:58},
+  year={2009}
+}
+
+@article{buczak2016survey,
+  title={A Survey of Data Mining and Machine Learning Methods for Cyber Security Intrusion Detection},
+  author={Buczak, Anna L. and Guven, Erhan},
+  journal={IEEE Communications Surveys \& Tutorials},
+  volume={18},
+  number={2},
+  pages={1153--1176},
+  year={2016}
+}
+
+@article{apruzzese2023role,
+  title={The Role of Machine Learning in Cybersecurity},
+  author={Apruzzese, Giovanni and Laskov, Pavel and Montes de Oca, Edgardo and Mallouli, Wissam and B{\'u}rdalo Rapa, Luis and Grammatopoulos, Athanasios Vasileios and Di Franco, Fabio},
+  journal={Digital Threats: Research and Practice},
+  volume={4},
+  number={1},
+  pages={8:1--8:38},
+  year={2023},
+  doi={10.1145/3545574}
+}
+
+% ---------------- Evaluation pitfalls, datasets and shift ----------------
+@inproceedings{sommer2010outside,
+  title={Outside the Closed World: On Using Machine Learning for Network Intrusion Detection},
+  author={Sommer, Robin and Paxson, Vern},
+  booktitle={Proceedings of the IEEE Symposium on Security and Privacy (S\&P)},
+  pages={305--316},
+  year={2010}
+}
+
+@inproceedings{arp2022dos,
+  title={Dos and Don'ts of Machine Learning in Computer Security},
+  author={Arp, Daniel and Quiring, Erwin and Pendlebury, Feargus and Warnecke, Alexander and Pierazzi, Fabio and Wressnegger, Christian and Cavallaro, Lorenzo and Rieck, Konrad},
+  booktitle={Proceedings of the 31st USENIX Security Symposium},
+  year={2022}
+}
+
+@inproceedings{pendlebury2019tesseract,
+  title={{TESSERACT}: Eliminating Experimental Bias in Malware Classification across Space and Time},
+  author={Pendlebury, Feargus and Pierazzi, Fabio and Jordaney, Roberto and Kinder, Johannes and Cavallaro, Lorenzo},
+  booktitle={Proceedings of the 28th USENIX Security Symposium},
+  year={2019}
+}
+
+@inproceedings{jordaney2017transcend,
+  title={Transcend: Detecting Concept Drift in Malware Classification Models},
+  author={Jordaney, Roberto and others},
+  booktitle={Proceedings of the 26th USENIX Security Symposium},
+  year={2017}
+}
+
+@article{gama2014drift,
+  title={A Survey on Concept Drift Adaptation},
+  author={Gama, Jo{\~a}o and {\v{Z}}liobait{\.e}, Indr{\.e} and Bifet, Albert and Pechenizkiy, Mykola and Bouchachia, Abdelhamid},
+  journal={ACM Computing Surveys},
+  volume={46},
+  number={4},
+  pages={44:1--44:37},
+  year={2014}
+}
+
+@book{quinonero2009shift,
+  title={Dataset Shift in Machine Learning},
+  editor={Qui{\~n}onero-Candela, Joaquin and Sugiyama, Masashi and Schwaighofer, Anton and Lawrence, Neil D.},
+  publisher={MIT Press},
+  year={2009}
+}
+
+@article{ring2019datasets,
+  title={A Survey of Network-Based Intrusion Detection Data Sets},
+  author={Ring, Markus and Wunderlich, Sarah and Scheuring, Deniz and Landes, Dieter and Hotho, Andreas},
+  journal={Computers \& Security},
+  volume={86},
+  pages={147--167},
+  year={2019}
+}
+
+@inproceedings{sharafaldin2018cicids,
+  title={Toward Generating a New Intrusion Detection Dataset and Intrusion Traffic Characterization},
+  author={Sharafaldin, Iman and Lashkari, Arash Habibi and Ghorbani, Ali A.},
+  booktitle={Proceedings of the 4th International Conference on Information Systems Security and Privacy (ICISSP)},
+  pages={108--116},
+  year={2018}
+}
+
+@inproceedings{moustafa2015unsw,
+  title={{UNSW-NB15}: A Comprehensive Data Set for Network Intrusion Detection Systems},
+  author={Moustafa, Nour and Slay, Jill},
+  booktitle={Military Communications and Information Systems Conference (MilCIS)},
+  year={2015}
+}
+
+@inproceedings{engelen2021cicids,
+  title={Troubleshooting an Intrusion Detection Dataset: The {CICIDS2017} Case Study},
+  author={Engelen, Gints and Rimmer, Vera and Joosen, Wouter},
+  booktitle={IEEE Security and Privacy Workshops (SPW)},
+  year={2021}
+}
+
+@inproceedings{hendrycks2017baseline,
+  title={A Baseline for Detecting Misclassified and Out-of-Distribution Examples in Neural Networks},
+  author={Hendrycks, Dan and Gimpel, Kevin},
+  booktitle={International Conference on Learning Representations (ICLR)},
+  year={2017}
+}
+
+@inproceedings{guo2017calibration,
+  title={On Calibration of Modern Neural Networks},
+  author={Guo, Chuan and Pleiss, Geoff and Sun, Yu and Weinberger, Kilian Q.},
+  booktitle={Proceedings of the 34th International Conference on Machine Learning (ICML)},
+  year={2017}
+}
+
+@incollection{platt1999probabilistic,
+  title={Probabilistic Outputs for Support Vector Machines and Comparisons to Regularized Likelihood Methods},
+  author={Platt, John C.},
+  booktitle={Advances in Large Margin Classifiers},
+  publisher={MIT Press},
+  pages={61--74},
+  year={1999}
+}
+
+% ---------------- Adversarial machine learning ----------------
+@inproceedings{goodfellow2015explaining,
+  title={Explaining and Harnessing Adversarial Examples},
+  author={Goodfellow, Ian J. and Shlens, Jonathon and Szegedy, Christian},
+  booktitle={International Conference on Learning Representations (ICLR)},
+  year={2015}
+}
+
+@inproceedings{carlini2017towards,
+  title={Towards Evaluating the Robustness of Neural Networks},
+  author={Carlini, Nicholas and Wagner, David},
+  booktitle={Proceedings of the IEEE Symposium on Security and Privacy (S\&P)},
+  pages={39--57},
+  year={2017}
+}
+
+@article{biggio2018wild,
+  title={Wild Patterns: Ten Years after the Rise of Adversarial Machine Learning},
+  author={Biggio, Battista and Roli, Fabio},
+  journal={Pattern Recognition},
+  volume={84},
+  pages={317--331},
+  year={2018}
+}
+
+@inproceedings{pierazzi2020problemspace,
+  title={Intriguing Properties of Adversarial {ML} Attacks in the Problem Space},
+  author={Pierazzi, Fabio and Pendlebury, Feargus and Cortellazzi, Jacopo and Cavallaro, Lorenzo},
+  booktitle={Proceedings of the IEEE Symposium on Security and Privacy (S\&P)},
+  year={2020}
+}
+
+% ---------------- Explainability ----------------
+@inproceedings{ribeiro2016lime,
+  title={``{Why} Should {I} Trust You?'': Explaining the Predictions of Any Classifier},
+  author={Ribeiro, Marco Tulio and Singh, Sameer and Guestrin, Carlos},
+  booktitle={Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining},
+  pages={1135--1144},
+  year={2016}
+}
+
+@inproceedings{lundberg2017shap,
+  title={A Unified Approach to Interpreting Model Predictions},
+  author={Lundberg, Scott M. and Lee, Su-In},
+  booktitle={Advances in Neural Information Processing Systems (NeurIPS)},
+  volume={30},
+  year={2017}
+}
+
+@inproceedings{sundararajan2017axiomatic,
+  title={Axiomatic Attribution for Deep Networks},
+  author={Sundararajan, Mukund and Taly, Ankur and Yan, Qiqi},
+  booktitle={Proceedings of the 34th International Conference on Machine Learning (ICML)},
+  year={2017}
 }
