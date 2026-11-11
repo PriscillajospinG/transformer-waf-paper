@@ -46,13 +46,15 @@ def main():
     ap.add_argument("--train", required=True)
     ap.add_argument("--test", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--text-col", default="text",
+                    help="use text_decoded to match the transformer")
     args = ap.parse_args()
 
     tr, te = pd.read_parquet(args.train), pd.read_parquet(args.test)
     vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(1, 4), min_df=2,
                           max_features=50000)
-    Xtr = vec.fit_transform(tr["text"])
-    Xte = vec.transform(te["text"])
+    Xtr = vec.fit_transform(tr[args.text_col])
+    Xte = vec.transform(te[args.text_col])
     ytr, yte = tr["label"].to_numpy(), te["label"].to_numpy()
 
     results = {}

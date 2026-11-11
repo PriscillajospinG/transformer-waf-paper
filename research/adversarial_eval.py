@@ -34,9 +34,10 @@ import pandas as pd
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from evaluate import model_probs  # noqa: E402
-from waf_rules import fuse_decision, preprocess_request  # noqa: E402
+from waf_rules import fuse_decision, prepare_model_text  # noqa: E402
 
 random.seed(42)
+MODEL_INPUT = "decoded"
 
 
 def m_comment(u):
@@ -75,7 +76,7 @@ MUTATIONS = {
 
 
 def blocked(model_dir, method, uri, tau_high, tau_low):
-    p = model_probs(model_dir, [preprocess_request(method, uri)])[0]
+    p = model_probs(model_dir, [prepare_model_text(method, uri, MODEL_INPUT)])[0]
     return fuse_decision(method, uri, p, tau_high, tau_low)[0], p
 
 
@@ -83,22 +84,27 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True)
     ap.add_argument("--test", required=True)
-    ap.add_argument("--sample", type=int, default=300,
-                    help="max malicious samples to attack (speed)")
+    ap.add_argument("--sample", type=int, default=0,
+                    help="max malicious samples to attack (0 = all blocked payloads)")
+    ap.add_argument("--model-input", default="decoded",
+                    choices=["decoded", "raw", "decoded_nomask"],
+                    help="must match how the model was trained")
     ap.add_argument("--tau-high", type=float, default=0.98)
     ap.add_argument("--tau-low", type=float, default=0.90)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
+    global MODEL_INPUT
+    MODEL_INPUT = args.model_input
     df = pd.read_parquet(args.test)
     mal = df[df["label"] == 1]
-    if len(mal) > args.sample:
+    if args.sample and len(mal) > args.sample:
         mal = mal.sample(args.sample, random_state=42)
 
     # keep only payloads that are actually blocked to begin with
     base_uris = mal["raw_uri"].tolist()
     base_methods = mal["method"].tolist()
-    base_texts = [preprocess_request(m, u) for m, u in zip(base_methods, base_uris)]
+    base_texts = [prepare_model_text(m, u, MODEL_INPUT) for m, u in zip(base_methods, base_uris)]
     base_probs = model_probs(args.model, base_texts)
     caught = [(m, u) for m, u, p in zip(base_methods, base_uris, base_probs)
               if fuse_decision(m, u, p, args.tau_high, args.tau_low)[0]]
@@ -110,7 +116,7 @@ def main():
 
     for name, fn in MUTATIONS.items():
         mutated_uris = [fn(u) for _, u in caught]
-        mutated_texts = [preprocess_request(m, u)
+        mutated_texts = [prepare_model_text(m, u, MODEL_INPUT)
                          for (m, _), u in zip(caught, mutated_uris)]
         probs = model_probs(args.model, mutated_texts)
         evaded = 0

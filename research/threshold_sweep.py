@@ -15,6 +15,7 @@ Usage
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 
@@ -24,7 +25,7 @@ from sklearn.metrics import (f1_score, precision_score, recall_score,
                              confusion_matrix)
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from evaluate import model_probs  # noqa: E402
+from common import load_table, model_probs  # noqa: E402
 from waf_rules import fuse_decision  # noqa: E402
 
 
@@ -40,11 +41,15 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--hybrid", action="store_true",
                     help="sweep hybrid tau_high instead of raw prob threshold")
+    ap.add_argument("--text-col", default="text",
+                    help="model input column (match training)")
+    ap.add_argument("--fpr-budgets", default="0.01,0.03,0.05,0.10",
+                    help="comma list: report the best-recall threshold under each FPR")
     args = ap.parse_args()
 
-    df = pd.read_parquet(args.test)
+    df = load_table(args.test)
     y = df["label"].to_numpy()
-    scores = model_probs(args.model, df["text"].tolist())
+    scores = model_probs(args.model, df[args.text_col].tolist())
 
     rows = []
     for t in np.round(np.arange(0.50, 1.00, 0.02), 2):
@@ -66,10 +71,27 @@ def main():
     out = pd.DataFrame(rows)
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     out.to_csv(args.out, index=False)
+
+    # Operating points: for each FPR budget, the threshold with the highest
+    # recall whose FPR <= budget (Eq. tau* in the paper).
+    ops = {}
+    for b in [float(x) for x in args.fpr_budgets.split(",")]:
+        ok = out[out["fpr"] <= b]
+        if len(ok):
+            r = ok.loc[ok["recall"].idxmax()]
+            ops[f"fpr<={b}"] = {"threshold": float(r["threshold"]),
+                                "recall": float(r["recall"]), "fpr": float(r["fpr"]),
+                                "f1": float(r["f1"])}
     best = out.loc[out["f1"].idxmax()]
+    summary = {"sweep_csv": args.out, "best_f1": best.to_dict(),
+               "operating_points": ops}
+    with open(os.path.splitext(args.out)[0] + "_points.json", "w") as fh:
+        json.dump(summary, fh, indent=2)
     print(out.to_string(index=False))
-    print(f"\nBest-F1 operating point: threshold={best['threshold']} "
-          f"F1={best['f1']} FPR={best['fpr']} recall={best['recall']}")
+    print(f"\nBest-F1: threshold={best['threshold']} F1={best['f1']} "
+          f"FPR={best['fpr']} recall={best['recall']}")
+    for k, v in ops.items():
+        print(f"  {k}: tau={v['threshold']} recall={v['recall']} fpr={v['fpr']}")
     print(f"saved -> {args.out}")
 
 
