@@ -923,38 +923,30 @@ Planned enhancements for SecureBERT WAF:
 ## 📚 Project Structure
 
 ```
-transformer-waf-test/
-├── waf/                          # Core WAF Engine
-│   ├── app/
-│   │   └── main.py              # FastAPI server + decision engine
-│   ├── model/
-│   │   ├── transformer.py       # SecureBERT classifier
-│   │   ├── tokenizer.py         # Request tokenization
-│   │   └── weights/             # Pre-trained model files
-│   ├── data/
-│   │   ├── normalizer.py        # URI normalization
-│   │   └── build_dataset.py     # Training data generation
-│   ├── train/
-│   │   └── train_pipeline.py    # Model fine-tuning
-│   ├── requirements.txt          # Python dependencies
-│   └── Dockerfile               # Container image
-│
-├── frontend/                     # Web Dashboard
-│   ├── index.html               # Dashboard UI
-│   ├── script.js                # Real-time polling
-│   └── style.css                # Styling
-│
-├── nginx/                        # Reverse Proxy
-│   ├── nginx.conf.template      # Routing configuration
-│   └── logs/                    # Access & error logs
-│
-├── scripts/                      # Testing Tools
+transformer-waf-paper/
+├── waf/                          # Core WAF engine (deployed service)
+│   ├── app/main.py               # FastAPI server + decision engine
+│   ├── model/                    # Classifier + tokenizer (weights/ not in git)
+│   ├── train/train_pipeline.py   # Training script for the deployed weights
+│   ├── requirements.txt
+│   └── Dockerfile
+├── research/                     # Reproducible experiments for the paper
+│   └── README.md                 # Step-by-step runbook
+├── paper/
+│   ├── journal/main.tex          # Journal manuscript
+│   ├── conference/main.tex       # Conference paper
+│   └── references.bib
+├── colab/                        # Colab notebook for GPU runs
+├── frontend/                     # Web dashboard
+├── nginx/nginx.conf.template     # Reverse proxy + auth_request
+├── scripts/                      # Live-stack test traffic and checks
+│   ├── verify_waf.py
 │   ├── test_zero_day_detection.py
 │   ├── generate_malicious.py
 │   └── generate_benign.py
-│
-├── docker-compose.yml            # Container orchestration
-└── README.md                     # This file!
+├── docker-compose.yml
+├── WAF_Journal_Overleaf.zip      # Upload to Overleaf
+└── README.md
 ```
 
 ---
@@ -1031,4 +1023,4 @@ scale, and production security hardening. Do not rely on it as your only defense
 
 ---
 
-> 🛡️ **A research prototype for hybrid transformer-based web attack detection.** See `research/` for the reproducible evaluation pipeline and `JOURNAL_PAPER_SKELETON.md` / `RESEARCH_GAP_ANALYSIS.md` for the paper plan.
+> 🛡️ **A research prototype for hybrid transformer-based web attack detection.** See `research/README.md` for the reproducible evaluation pipeline and `paper/` for the manuscripts.
