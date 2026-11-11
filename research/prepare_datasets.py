@@ -5,8 +5,12 @@ Converts public web-attack datasets into ONE unified schema so every
 downstream script (train / evaluate / ablation / cross-dataset) consumes the
 same format:
 
-    columns: text, raw_uri, method, label, attack_type, dataset
-      - text        : preprocessed model input  "<METHOD> <URI digits->{ID}>"
+    columns: text, text_raw, text_decoded, raw_uri, method, label,
+             attack_type, dataset
+      - text        : model input used by default (see --model-input)
+      - text_raw    : "<METHOD> <raw URI, digits->{ID}>"
+      - text_decoded: "<METHOD> <double-decoded URI, digits->{ID}>"
+                      (this is what the live service feeds the model)
       - raw_uri     : original request path+query (for rule engine)
       - method      : HTTP method
       - label       : 0 = benign, 1 = malicious
@@ -49,9 +53,10 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from waf_rules import preprocess_request  # noqa: E402
+from waf_rules import prepare_model_text, MODEL_INPUT_MODES  # noqa: E402
 
 SEED = 42
+MODEL_INPUT = "decoded"   # set from --model-input in main()
 
 
 # ---------------------------------------------------------------------------
@@ -76,13 +81,19 @@ def _finalize(df: pd.DataFrame, dataset: str) -> pd.DataFrame:
     df["raw_uri"] = df["raw_uri"].fillna("/")
     df["label"] = df["label"].astype(int)
     df["dataset"] = dataset
-    df["text"] = [preprocess_request(m, u) for m, u in zip(df["method"], df["raw_uri"])]
+    df["text_raw"] = [prepare_model_text(m, u, "raw")
+                      for m, u in zip(df["method"], df["raw_uri"])]
+    df["text_decoded"] = [prepare_model_text(m, u, "decoded")
+                          for m, u in zip(df["method"], df["raw_uri"])]
+    df["text"] = [prepare_model_text(m, u, MODEL_INPUT)
+                  for m, u in zip(df["method"], df["raw_uri"])]
     df["attack_type"] = [
         "benign" if lbl == 0 else infer_attack_type(u)
         for lbl, u in zip(df["label"], df["raw_uri"])
     ]
     df = df.drop_duplicates(subset=["text"]).reset_index(drop=True)
-    return df[["text", "raw_uri", "method", "label", "attack_type", "dataset"]]
+    return df[["text", "text_raw", "text_decoded", "raw_uri", "method",
+               "label", "attack_type", "dataset"]]
 
 
 # ---------------------------------------------------------------------------
@@ -134,17 +145,35 @@ def load_csic_raw(normal_path: str, anomaly_path: str) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Generic CSV loader (CSIC CSV, PKDD, FWAF, etc.)
 # ---------------------------------------------------------------------------
-def load_csv(path: str, url_col: str, label_col: str, dataset: str,
-             method_col: str | None = None,
-             malicious_values=("1", "anom", "anomalous", "attack", "malicious", "1.0")) -> pd.DataFrame:
-    df = pd.read_csv(path)
+def load_csv(path: str, url_col: str, label_col: str | None, dataset: str,
+             method_col: str | None = None, all_malicious: bool = False,
+             malicious_values=("1", "anom", "anomalous", "attack", "malicious", "1.0"),
+             body_col: str | None = None) -> pd.DataFrame:
+    """
+    Generic CSV loader (SR-BH 2020, PKDD 2007, FWAF, the 2025 ModSecurity
+    capture, ...). For an attack-only corpus pass all_malicious=True and no
+    label column. If body_col is given, a non-empty body is appended to the
+    URI as a query string, as done for CSIC 2010 POST requests.
+    """
+    df = pd.read_csv(path, low_memory=False)
     if url_col not in df.columns:
         raise ValueError(f"--url-col '{url_col}' not in columns: {list(df.columns)}")
     out = pd.DataFrame()
-    out["raw_uri"] = df[url_col].astype(str)
+    uri = df[url_col].fillna("/").astype(str)
+    uri = uri.str.replace(r"^https?://[^/]+", "", regex=True)
+    if body_col and body_col in df.columns:
+        body = df[body_col].fillna("").astype(str).str.strip()
+        sep = uri.str.contains(r"\?").map({True: "&", False: "?"})
+        uri = uri.where(body == "", uri + sep + body)
+    out["raw_uri"] = uri
     out["method"] = df[method_col].astype(str) if method_col and method_col in df.columns else "GET"
-    lbl = df[label_col].astype(str).str.strip().str.lower()
-    out["label"] = lbl.isin([str(v).lower() for v in malicious_values]).astype(int)
+    if all_malicious:
+        out["label"] = 1
+    else:
+        if not label_col or label_col not in df.columns:
+            raise ValueError("give --label-col, or --all-malicious for attack-only data")
+        lbl = df[label_col].astype(str).str.strip().str.lower()
+        out["label"] = lbl.isin([str(v).lower() for v in malicious_values]).astype(int)
     return _finalize(out, dataset)
 
 
@@ -152,14 +181,23 @@ def load_csv(path: str, url_col: str, label_col: str, dataset: str,
 # Stratified splitting
 # ---------------------------------------------------------------------------
 def make_splits(parquet_path: str, out_dir: str,
-                train=0.70, val=0.15, test=0.15):
+                train=0.70, val=0.15, test=0.15, seed: int = SEED):
+    """
+    Stratified 70/15/15 split. Use the same --split-seed for every
+    experiment so all seeds of training see the same test set.
+    Attack-only corpora (one class) are written whole as test.parquet.
+    """
     df = pd.read_parquet(parquet_path)
+    os.makedirs(out_dir, exist_ok=True)
+    if df["label"].nunique() < 2:
+        df.reset_index(drop=True).to_parquet(os.path.join(out_dir, "test.parquet"))
+        print(f"Single-class corpus: wrote all {len(df)} rows as {out_dir}/test.parquet")
+        return
     train_df, temp = train_test_split(
-        df, train_size=train, stratify=df["label"], random_state=SEED)
+        df, train_size=train, stratify=df["label"], random_state=seed)
     rel_val = val / (val + test)
     val_df, test_df = train_test_split(
-        temp, train_size=rel_val, stratify=temp["label"], random_state=SEED)
-    os.makedirs(out_dir, exist_ok=True)
+        temp, train_size=rel_val, stratify=temp["label"], random_state=seed)
     for name, part in [("train", train_df), ("val", val_df), ("test", test_df)]:
         part.reset_index(drop=True).to_parquet(os.path.join(out_dir, f"{name}.parquet"))
     print(f"Splits written to {out_dir}")
@@ -177,17 +215,28 @@ def main():
     ap.add_argument("--input"); ap.add_argument("--url-col"); ap.add_argument("--label-col")
     ap.add_argument("--method-col"); ap.add_argument("--dataset", default="custom")
     ap.add_argument("--split"); ap.add_argument("--out"); ap.add_argument("--out-dir")
+    ap.add_argument("--split-seed", type=int, default=SEED)
+    ap.add_argument("--model-input", choices=MODEL_INPUT_MODES, default="decoded",
+                    help="which text goes into the 'text' column (default: "
+                         "decoded, matching the live service)")
+    ap.add_argument("--all-malicious", action="store_true",
+                    help="attack-only CSV (e.g. the 2025 ModSecurity capture)")
+    ap.add_argument("--body-col", help="optional request-body column to append")
     args = ap.parse_args()
 
+    global MODEL_INPUT
+    MODEL_INPUT = args.model_input
+
     if args.split:
-        make_splits(args.split, args.out_dir or "data/splits")
+        make_splits(args.split, args.out_dir or "data/splits", seed=args.split_seed)
         return
 
     if args.source == "csic_raw":
         df = load_csic_raw(args.normal, args.anomaly)
     elif args.source == "csv":
         df = load_csv(args.input, args.url_col, args.label_col,
-                      args.dataset, args.method_col)
+                      args.dataset, args.method_col,
+                      all_malicious=args.all_malicious, body_col=args.body_col)
     else:
         ap.error("provide --source or --split")
 
