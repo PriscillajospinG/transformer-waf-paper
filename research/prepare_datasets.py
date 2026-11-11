@@ -160,13 +160,16 @@ def load_csv(path: str, url_col: str, label_col: str | None, dataset: str,
         raise ValueError(f"--url-col '{url_col}' not in columns: {list(df.columns)}")
     out = pd.DataFrame()
     uri = df[url_col].fillna("/").astype(str)
+    uri = uri.str.strip()
+    uri = uri.str.replace(r"\s+HTTP/\d(\.\d)?$", "", regex=True)  # "GET /x HTTP/1.1" style
     uri = uri.str.replace(r"^https?://[^/]+", "", regex=True)
     if body_col and body_col in df.columns:
         body = df[body_col].fillna("").astype(str).str.strip()
         sep = uri.str.contains(r"\?").map({True: "&", False: "?"})
         uri = uri.where(body == "", uri + sep + body)
     out["raw_uri"] = uri
-    out["method"] = df[method_col].astype(str) if method_col and method_col in df.columns else "GET"
+    out["method"] = (df[method_col].fillna("GET").astype(str).str.strip().str.upper()
+                     if method_col and method_col in df.columns else "GET")
     if all_malicious:
         out["label"] = 1
     else:

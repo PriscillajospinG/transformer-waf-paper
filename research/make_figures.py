@@ -62,7 +62,9 @@ def per_class(results_dir, out, prefer="hybrid"):
         d = _load(p)
         pcr = d.get("per_attack_recall")
         if pcr:
-            pd.DataFrame([{"attack_type": k, "recall": v} for k, v in pcr.items()]
+            pd.DataFrame([{"attack_type": k,
+                           "recall": v["recall"] if isinstance(v, dict) else v}
+                          for k, v in pcr.items()]
                          ).to_csv(out, index=False)
             print(f"per_class_recall -> {out} (from {os.path.basename(p)})")
             return
