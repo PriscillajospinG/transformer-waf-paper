@@ -41,6 +41,8 @@ def metric_comparison(results_dir, out):
         name = os.path.splitext(os.path.basename(p))[0]
         if "metrics" in d:  # evaluate.py output
             m = d["metrics"]
+            if not isinstance(m.get("f1"), (int, float)):
+                continue  # aggregate / CI / other summary files
             rows.append({"method": name, "precision": m.get("precision"),
                          "recall": m.get("recall"), "f1": m.get("f1"),
                          "fpr": m.get("fpr")})
