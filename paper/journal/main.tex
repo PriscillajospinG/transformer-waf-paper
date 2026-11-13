@@ -315,7 +315,9 @@ DeepWAF~\cite{kuang2019deepwaf} neither use pretrained transformers nor
 report inline inference cost, and none of the transformer studies we
 identified combines inline latency, false-positive control at a fixed
 threshold, rule--model fusion, evasion testing and zero-shot transfer. The
-present work evaluates a single system on all five aspects.
+present work examines all five on one system, with the limits that
+Section~\ref{sec:threats} lists: latency is measured for the model only,
+the evasion test uses fixed mutations, and transfer runs in one direction.
 
 \begin{table*}[t]
 \centering
@@ -333,7 +335,7 @@ BERT--LSTM~\cite{liu2024bertlstm}    & Transformer & ---        & ---     & --- 
 ADL-WAF~\cite{adlwaf2025}            & Two-layer ML & ---       & ---     & partial& --- \\
 DeepWAF~\cite{kuang2019deepwaf}      & CNN/LSTM    & part.      & ---     & ---    & --- \\
 WAF-A-MoLE~\cite{demetrio2020wafamole} & Evasion   & ---        & ---     & ---    & --- \\
-This work                           & Hybrid rule+transformer & \checkmark & \checkmark & \checkmark & \checkmark \\
+This work                           & Hybrid rule+transformer & \checkmark & part. (model only) & measured & part. (one direction) \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -1618,8 +1620,9 @@ whether, they deduplicated, so we cannot show that this accounts for the whole g
 figure is best read as a stricter estimate.
 
 Scope differs too. The cited studies measure classification inside one
-corpus and stop there; none gives FPR at a chosen threshold, latency, or an
-evasion test, which are the measurements our system was built around.
+corpus and stop there; in the studies we reviewed we found no FPR at a chosen
+threshold, latency figure or evasion test, which are the measurements our
+system was built around.
 Comparing architectures fairly would need the same deduplication, split and
 seed, with FPR reported beside accuracy. Until that is common practice, a
 table such as Table~\ref{tab:survey} compares evaluation protocols at
@@ -1629,10 +1632,10 @@ least as much as it compares detectors.
 \section{Discussion}
 \label{sec:discussion}
 Table~\ref{tab:survey} summarises the surveyed work next to ours. Almost every
-entry is evaluated by offline classification only. Among the surveyed
-works, ours is the only one that reports inline latency, false-positive
-cost, adversarial evasion and cross-dataset generalisation for the same
-system.
+entry is evaluated by offline classification only. Among the works we
+surveyed, ours is the only one that reports model latency, false-positive
+cost, mutation-based evasion and zero-shot transfer for the same system,
+though each of these is limited in scope (Section~\ref{sec:threats}).
 
 \begin{table*}[t]
 \centering
@@ -1679,8 +1682,11 @@ the rules. Earlier attack studies, WAF-A-MoLE~\cite{demetrio2020wafamole}
 and AdvSQLi~\cite{advsqli2024}, led us to expect a model-only detector to
 fall quickly to mutated payloads. It did not: the model equalled the hybrid
 on four of the six mutation families and was evaded in only $0.12\%$ of
-cases (Table~\ref{tab:adv}), far too little to justify an FPR gap of that
-size.
+cases (Table~\ref{tab:adv}). Since case randomisation and double encoding
+cannot change the hybrid's decision by construction, this comparison rests
+on four families only, and it does not rule out stronger, search-based
+attacks; it still shows no sign of a robustness gain large enough to
+offset an FPR gap of that size.
 
 Distribution shift was the next candidate. On SR-BH~2020 the model alone
 produces FPR~$1.00$, while the hybrid keeps F1 at $0.971$
