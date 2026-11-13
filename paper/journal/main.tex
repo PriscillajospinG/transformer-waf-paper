@@ -88,50 +88,46 @@ enforcement, decision fusion, false-positive control, adversarial robustness.
 
 
 \section{Introduction}
-\IEEEPARstart{W}{eb} applications are among the most exposed parts of
-modern software. Injection attacks such as SQL injection, cross-site
-scripting (XSS), path traversal and command injection have remained in the
-OWASP Top Ten for many years. The common defence is a web application
-firewall (WAF), a component placed in front of the application that
-inspects each request and blocks the ones it considers malicious.
+\IEEEPARstart{I}{njection} flaws (SQL injection, cross-site scripting,
+path traversal, command injection) have sat on the OWASP Top Ten for well
+over a decade, and any site exposed to the internet sees them daily. The
+usual countermeasure is a web application firewall (WAF): a proxy-side
+filter that reads every request and refuses those that look hostile.
 
-Production WAFs predominantly rely on signatures and regular expressions;
-ModSecurity with the OWASP Core Rule Set~\cite{owaspcrs} is the reference
-implementation. Such rules are fast, deterministic and auditable, yet they
-operate on the surface form of a payload. An inline comment inside
-\texttt{UNION}, mixed case or double URL encoding leaves the executed
-statement unchanged while defeating the match, and tightening the rules to
-cover these variants raises the false-positive rate. Single-page front ends
-aggravate the problem, since WebSocket polling, asset requests and
-background API calls produce atypical but benign request shapes; in our
-deployment these routes required a dedicated safelist
+Most deployed WAFs are signature engines. ModSecurity loaded with the OWASP
+Core Rule Set~\cite{owaspcrs} is the standard example. Its rules run fast and
+can be read line by line, but they match the spelling of a payload, not its
+meaning. Insert a comment inside \texttt{UNION}, change letter case or
+encode the string twice, and the database still runs the same query while
+the pattern no longer fires. Widening the patterns to catch such variants
+then blocks innocent traffic. Single-page applications make this worse:
+WebSocket polling, asset fetches and background API calls look odd yet are
+harmless, and our own deployment needed a dedicated safelist for them
 (Section~\ref{sec:arch}).
 
-Learned detectors model the structure of an attack rather than its exact
-spelling. Transformer encoders~\cite{vaswani2017attention,devlin2019bert}
-suit this task because a request line can be tokenised and each token is
-encoded in the context of the full sequence. Studies following this
-approach report accuracy or F1 above $99\%$ on
+A learned detector can instead pick up the shape of an attack. Transformer
+encoders~\cite{vaswani2017attention,devlin2019bert} fit this setting, since
+a request line is tokenised and every token is read in the context of all
+the others. Papers taking this route quote accuracy or F1 above $99\%$ on
 CSIC~2010~\cite{wadbert2026,scireports2024novelxsssqli}.
 
-Missed attacks and false positives have asymmetric costs. A missed attack
-is infrequent but potentially severe, whereas a false positive is cheap in
-isolation but recurs for every wrongly blocked user, producing support
-load, abandoned sessions and pressure to disable the control. At a 1\%
-false-positive rate, a service receiving $10^6$ requests per day incurs
-about $10^4$ wrongful blocks daily. The false-positive rate is therefore
-treated as a primary metric, and the decision policy is designed around
-it.
+The two kinds of error do not cost the same. A missed attack is rare but
+can be serious. A false positive costs little once, yet it repeats for each
+legitimate user who is refused, which means support tickets, abandoned
+sessions and eventually a decision to switch the filter off. With a 1\%
+false-positive rate and $10^6$ requests per day, roughly $10^4$ legitimate
+requests are refused every day. We therefore treat the false-positive rate
+as a primary metric and build the decision policy around it.
 
-These figures are obtained offline: a model is trained on a fixed split
-and evaluated once. Deployment as a firewall raises three questions that
-offline evaluation leaves open. (i) \emph{Cost}: the latency added to every
-request and the throughput of a single process. (ii) \emph{False
-positives}: the number of legitimate requests blocked at a chosen
-threshold, which published work rarely reports. (iii) \emph{Transfer}:
-CSIC~2010 is synthetic, so results on it say little about traffic from
-other sites. This paper addresses these questions with a working system
-and makes the following contributions.
+Those published figures come from offline experiments, where one model is
+trained on one split and scored once. Running the model as a firewall
+raises three questions that such experiments do not answer. (i)~\emph{Cost}:
+how much latency each request pays and how many requests one process can
+handle. (ii)~\emph{False positives}: how many legitimate requests are
+refused at a given threshold, a figure papers seldom give. (iii)~\emph{Transfer}:
+CSIC~2010 is synthetic, so a good score says little about another site's
+traffic. We study these questions on a working system, and the paper
+contributes the following.
 \begin{itemize}
 \item \emph{Inline deployment.} The classifier is integrated through the
 Nginx \texttt{auth\_request} directive, so every request is adjudicated
@@ -1617,37 +1613,36 @@ This work & -- & Rules + BERT, inline & CSIC 2010; F1 0.949, FPR 0.064 & -- \\
 \end{table*}
 
 \subsection{Why keep the rule layer at all?}
-The rule layer lowers precision on clean traffic, and we first expected to
-justify that cost by adversarial robustness. On CSIC~2010 the transformer
-alone is better than the hybrid on every metric: fusion with the rules
-lowers F1 from $0.949$ to $0.849$ and raises FPR from $0.064$ to $0.229$
-(Table~\ref{tab:ablation}). This alone would argue for removing the rules.
-Work such as WAF-A-MoLE~\cite{demetrio2020wafamole} and
-AdvSQLi~\cite{advsqli2024} suggested that a model-only detector would be
-easy to evade, but in our test the model matched the hybrid on four of six
-mutation families and was evaded $0.12\%$ of the time overall
-(Table~\ref{tab:adv}). That margin is too small to explain the FPR gap.
+On clean traffic the rules cost precision. Our first hope was that they
+would earn that cost back through robustness against evasion. They did not.
+On CSIC~2010 the transformer by itself beats the hybrid everywhere: adding
+the rules drops F1 from $0.949$ to $0.849$ and lifts FPR from $0.064$ to
+$0.229$ (Table~\ref{tab:ablation}). Taken alone, that result says to delete
+the rules. Earlier attack studies, WAF-A-MoLE~\cite{demetrio2020wafamole}
+and AdvSQLi~\cite{advsqli2024}, led us to expect a model-only detector to
+fall quickly to mutated payloads. It did not: the model equalled the hybrid
+on four of the six mutation families and was evaded in only $0.12\%$ of
+cases (Table~\ref{tab:adv}), far too little to justify an FPR gap of that
+size.
 
-Distribution shift then looked like the explanation. On SR-BH~2020 the
-model alone reaches FPR~$1.00$ while the hybrid holds F1~$0.971$
-(Section~\ref{sec:crossdataset}). On the 2025 production corpus this
-explanation fails (Section~\ref{sec:secondcorpus}). There the model
-generalises well alone (recall~$0.999$), and the rule layer reduces recall
-to $0.151$, because the high-confidence branch of Tier~4 needs a rule
-signal that newer payloads often do not trigger. The effect of the rule
-layer on generalisation therefore depends on the corpus. It can rescue a
-failing model on one corpus and suppress a working model on another, and
-our evaluation gives no way to predict which will happen on new traffic.
+Distribution shift was the next candidate. On SR-BH~2020 the model alone
+produces FPR~$1.00$, while the hybrid keeps F1 at $0.971$
+(Section~\ref{sec:crossdataset}), which fits that story. The 2025 production
+corpus does not (Section~\ref{sec:secondcorpus}). Here the model alone
+generalises well (recall~$0.999$) and the rules pull recall down to $0.151$,
+since Tier~4's high-confidence branch needs a rule signal that newer
+payloads frequently fail to trigger. So the rules help on one corpus and
+hurt on the other, and nothing in our data predicts which outcome new
+traffic will bring.
 
-This suggests three practices for deployment. The anomaly and
-character-density rules should be calibrated on the protected application's
-own benign traffic. The rule signals should be updated together with the
-model. Alternatively, the always-on deterministic tiers can be limited to
-the precise direct signatures, with the calibrated transformer deciding the
-ambiguous cases. The rule layer should be treated as a conditional
-safeguard whose behaviour is checked on the deployment's own traffic. These
-changes are small edits to Algorithm~\ref{alg:fusion}, and evaluating them
-is future work.
+We draw three practical lessons. First, calibrate the anomaly and
+character-density rules on the protected application's own benign traffic.
+Second, refresh the rule signals whenever the model is refreshed. Third,
+consider restricting the always-on deterministic tiers to the precise direct
+signatures and letting the calibrated transformer settle the ambiguous
+cases. In short, the rule layer is a safeguard whose effect must be checked
+against local traffic before it is trusted. Each lesson amounts to a small
+change to Algorithm~\ref{alg:fusion}; testing them is future work.
 
 \subsection{What the false-positive rate means at deployment scale}
 The FPR figures matter more than accuracy because attacks are rare in real
@@ -1687,17 +1682,17 @@ operator would have to review.
 \end{figure}
 
 \subsection{The rule brittleness is itself a finding}
-Signatures calibrated for one application fire on the benign traffic of
-another. This is the maintenance burden described in the introduction, and
-we measure it as a $20.9\%$ false-positive rate for rules only. The
-transformer learned CSIC's benign distribution from data and reached an FPR
-of $6.4\%$ without hand tuning, which supports the case for learned
-detection. The same transformer failed in a related way when the traffic
-changed (Section~\ref{sec:crossdataset}), and the rule layer meant to
-compensate was just as dependent on the traffic it was built for
-(Section~\ref{sec:secondcorpus}). Learned detection removes the need to
-tune rules for each application, but dependence on the data distribution
-remains, in both the learned and the rule-based layers.
+A signature set tuned on one application misfires on another's benign
+requests. That is the maintenance burden raised in the introduction, and
+here it shows up as a $20.9\%$ false-positive rate for the rules alone. The
+transformer, by contrast, absorbed CSIC's benign pattern from data and
+reached $6.4\%$ with no hand tuning, a point in favour of learned detection.
+Yet the same transformer broke down once the traffic changed
+(Section~\ref{sec:crossdataset}), and the rules meant to back it up proved
+equally tied to the traffic they were written for
+(Section~\ref{sec:secondcorpus}). Learning spares us per-application rule
+tuning but not the dependence on the data distribution, which both layers
+share.
 
 \subsection{Scope of the detector}
 In deployment the detector inspects the method and the URI with its query
@@ -1887,45 +1882,41 @@ the model-driven branches.
 
 \section{Conclusion}
 \label{sec:conclusion}
-We presented a web application firewall that places a fine-tuned
-transformer in an inline enforcement path and combines it with rules
-through a four-tier policy, and we evaluated the whole system. On CSIC~2010
-the transformer reaches F1~$0.949$ at a $6.4\%$ false-positive rate with a
-median GPU inference time of $12.7$~ms. It is far better than a signature
-rule engine (F1~$0.567$) and close to a TF--IDF SVM baseline.
+This paper built a web application firewall in which a fine-tuned
+transformer sits in the inline blocking path next to a rule layer, joined by
+a four-tier policy, and tested the whole system rather than the classifier
+alone. On CSIC~2010 the transformer scores F1~$0.949$ with a $6.4\%$
+false-positive rate and a median GPU inference time of $12.7$~ms. That is
+well above a signature engine (F1~$0.567$) and close to a TF--IDF SVM.
 
-We expected the rule layer to pay for its false positives through
-resistance to evasion, and the data did not support this. The model alone
-matched the hybrid on four of six mutation families and was evaded $0.12\%$
-of the time overall. Generalisation then appeared to be the benefit: on
-SR-BH~2020 the model alone reaches a false-positive rate of $100\%$ while
-the hybrid holds F1~$0.971$. On a second corpus of 2025 production traffic
-the result is reversed. The model generalises alone (recall~$0.999$) and
-the rule layer lowers the hybrid's recall to $0.151$, because its
-high-confidence branch depends on rule signals written for older payload
-styles. The value of the rule layer is therefore not a fixed property of
-the architecture. It depends on the corpus, and a deployment must check it
-on its own traffic.
+We had assumed the rules would justify their false positives by resisting
+evasion. They did not: the model alone matched the hybrid on four of six
+mutation families and was evaded in $0.12\%$ of cases. Transfer seemed the
+next possible benefit. On SR-BH~2020 the model alone flags every benign
+request (FPR $100\%$) while the hybrid holds F1~$0.971$. A second corpus of
+2025 production traffic reverses this: the model alone generalises
+(recall~$0.999$), but the rules cut the hybrid's recall to $0.151$ because
+its high-confidence branch relies on signals written for older payloads.
+What the rule layer is worth therefore depends on the corpus rather than on
+the architecture, and each deployment has to measure it locally.
 
-Three implications follow for practitioners. A median inference time of
-$12.7$~ms on a T4 removes latency as an argument against learned detection
-in the blocking path. False-positive control requires most of the
-engineering effort, and score bands, a safelist and rule-supported fusion
-provide levers with measured costs. Finally, any configuration should run
-in log-only mode on the target traffic before blocking is enabled, because
-both the model and the rules encode assumptions about the traffic on which
-they were built.
+Three points follow for practitioners. At $12.7$~ms median on a T4,
+latency is no longer a reason to keep learned detection out of the blocking
+path. Most engineering effort goes into controlling false positives, for
+which score bands, a safelist and rule-supported fusion are the available
+levers, each with a measured cost. And any configuration should run in
+log-only mode on the target traffic before it is allowed to block, since the
+model and the rules both embed assumptions about the data they came from.
 
-For researchers, the evaluation sequence used here can be applied to other
-transformer-WAF proposals: within-corpus evaluation on deduplicated data,
-ablation against the system's own rule layer, a threshold sweep against a
-false-positive budget, measured inline latency, mutation of the system's
-own blocked set, and zero-shot transfer to at least two corpora that differ
-from the training data in different ways. In our case the later stages
-changed the conclusion of the earlier ones twice. Most of the findings in
-this paper, including the false-positive cost of fusion, the robustness of
-the model alone and the two opposite transfer results, would not have been
-visible from within-corpus accuracy.
+Researchers can reuse the evaluation sequence for other transformer WAFs:
+deduplicated within-corpus testing, ablation against the system's own rules,
+a threshold sweep under a false-positive budget, measured inline latency,
+mutation of the system's own blocked set, and zero-shot transfer to at least
+two corpora that differ from the training data in different ways. In this
+study the later stages overturned the conclusions of earlier ones twice.
+The false-positive cost of fusion, the robustness of the model alone and the
+two opposite transfer outcomes would all have stayed hidden if we had
+looked only at within-corpus accuracy.
 
 %=======================================================================
 \bibliographystyle{IEEEtran}
