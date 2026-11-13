@@ -1677,16 +1677,15 @@ On clean traffic the rules cost precision. Our first hope was that they
 would earn that cost back through robustness against evasion. They did not.
 On CSIC~2010 the transformer by itself beats the hybrid everywhere: adding
 the rules drops F1 from $0.949$ to $0.849$ and lifts FPR from $0.064$ to
-$0.228$ (Table~\ref{tab:ablation}). Taken alone, that result says to delete
-the rules. Earlier attack studies, WAF-A-MoLE~\cite{demetrio2020wafamole}
-and AdvSQLi~\cite{advsqli2024}, led us to expect a model-only detector to
-fall quickly to mutated payloads. It did not: the model equalled the hybrid
-on four of the six mutation families and was evaded in only $0.12\%$ of
-cases (Table~\ref{tab:adv}). Since case randomisation and double encoding
-cannot change the hybrid's decision by construction, this comparison rests
-on four families only, and it does not rule out stronger, search-based
-attacks; it still shows no sign of a robustness gain large enough to
-offset an FPR gap of that size.
+$0.228$ (Table~\ref{tab:ablation}). On that evidence alone we would drop
+the rules. Work on WAF-A-MoLE~\cite{demetrio2020wafamole} and
+AdvSQLi~\cite{advsqli2024} made us expect that a model without rules would
+be beaten by mutated payloads. It was not. The model matched the hybrid on
+four of the six mutation families and was evaded only $0.12\%$ of the time
+(Table~\ref{tab:adv}). Two families, case changes and double encoding, can
+never alter the hybrid's decision, so only four families really compare the
+two. Stronger, search-based attacks are not ruled out. Still, we see no
+robustness gain that would pay for an FPR gap this wide.
 
 Distribution shift was the next candidate. On SR-BH~2020 the model alone
 produces FPR~$1.00$, while the hybrid keeps F1 at $0.971$
@@ -1699,14 +1698,13 @@ payloads frequently fail to trigger. So the rules help on one corpus and
 hurt on the other, and nothing in our data predicts which outcome new
 traffic will bring.
 
-We draw three practical lessons. First, calibrate the anomaly and
-character-density rules on the protected application's own benign traffic.
-Second, refresh the rule signals whenever the model is refreshed. Third,
-consider restricting the always-on deterministic tiers to the precise direct
-signatures and letting the calibrated transformer settle the ambiguous
-cases. In short, the rule layer is a safeguard whose effect must be checked
-against local traffic before it is trusted. Each lesson amounts to a small
-change to Algorithm~\ref{alg:fusion}; testing them is future work.
+Three lessons follow. Tune the anomaly and character-density rules on the
+protected site's own benign traffic. Refresh the rule signals each time the
+model is refreshed. And think about keeping only the precise direct
+signatures always on, so that the calibrated transformer decides the unclear
+cases. Either way, check the rule layer against local traffic before
+trusting it. Each lesson is a small change to Algorithm~\ref{alg:fusion}.
+We have not tested them yet.
 
 \subsection{What the false-positive rate means at deployment scale}
 The FPR figures matter more than accuracy because attacks are rare in real
@@ -1774,13 +1772,12 @@ Two more limits should be stated. The detector is stateless and judges one
 request at a time. Attacks spread over many harmless-looking requests, such
 as credential stuffing, enumeration, slow scraping and business-logic
 abuse, are invisible to it, and rate-based or session-level controls are
-the right layer for them. The attack coverage also follows the corpora.
-CSIC-era injection families dominate the training data, and the 2025 corpus
-adds newer payload styles to the test data. Attack classes that are largely
-absent from all three corpora, such as server-side request forgery,
-deserialisation attacks and template injection, are not covered by any
-claim in this paper. Stating these limits allows the WAF to be combined
-with other controls deliberately.
+the right layer for them. Coverage is also limited by the corpora. Older
+CSIC-style injections dominate the training data. The 2025 corpus brings
+newer payloads, but only at test time. Some attack classes barely appear in
+any of the three corpora: server-side request forgery, deserialisation
+attacks and template injection. We make no claim about them. Naming these
+limits lets an operator pair the WAF with other controls on purpose.
 
 \subsection{Computational cost and deployment considerations}
 The latency figures in Table~\ref{tab:latency} were measured on a GPU, but
@@ -1959,17 +1956,17 @@ alone. On CSIC~2010 the transformer scores F1~$0.949$ with a $6.4\%$
 false-positive rate and a median GPU inference time of $12.7$~ms. That is
 well above a signature engine (F1~$0.567$) and close to a TF--IDF SVM.
 
-We had assumed the rules would justify their false positives by resisting
-evasion. They did not: the model alone matched the hybrid on four of six
-mutation families and was evaded in $0.12\%$ of cases. Transfer seemed the
+We had assumed the rules would pay for their false positives by resisting
+evasion. They did not. The model alone matched the hybrid on four of six
+mutation families and was evaded in $0.12\%$ of cases. Transfer was the
 next possible benefit. On SR-BH~2020 the model alone flags every benign
-request (FPR $100\%$) while the hybrid holds F1~$0.971$. A second corpus of
-2025 production traffic reverses this: the model alone flags $99.9\%$ of
-the requests, which on attack-only data does not by itself show
-generalisation, but the rules cut the hybrid's recall to $0.151$ because
-its high-confidence branch relies on signals written for older payloads.
-What the rule layer is worth therefore depends on the corpus rather than on
-the architecture, and each deployment has to measure it locally.
+request (FPR $100\%$), while the hybrid holds F1~$0.971$. The 2025
+production corpus tells the opposite story. There the model flags $99.9\%$
+of requests. Since every request in that set is an attack, this does not by
+itself show generalisation. The rules cut the hybrid's recall to $0.151$,
+because its high-confidence branch relies on signals written for older
+payloads. So the value of the rule layer depends on the corpus, not on the
+architecture. Each deployment has to measure it locally.
 
 Three points follow for practitioners. At $12.7$~ms median on a T4,
 latency is no longer a reason to keep learned detection out of the blocking
