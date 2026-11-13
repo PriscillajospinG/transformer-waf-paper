@@ -1,4 +1,4 @@
-\documentclass[journal]{IEEEtran}
+\documentclass[preprint,11pt]{elsarticle}
 
 \usepackage{amsmath,amssymb}
 \usepackage{mathptmx}
@@ -16,7 +16,7 @@
 \usepackage{multirow}
 \usepackage{url}
 \usepackage[table]{xcolor}
-\usepackage{cite}
+\usepackage{adjustbox}
 \usepackage{tikz}
 \usetikzlibrary{shapes.geometric,arrows.meta,positioning,fit,backgrounds,calc,shadows}
 \usepackage{pgfplots}
@@ -40,34 +40,37 @@
 \algrenewcommand{\algorithmicprocedure}{\textit{procedure}}
 \algrenewcommand{\algorithmicfunction}{\textit{function}}
 \usepackage[hidelinks]{hyperref}
+\biboptions{numbers,sort&compress}
 
 
 \begin{document}
 
+\begin{frontmatter}
+
 \title{A Deployable Hybrid Rule--Transformer Web Application Firewall with
 Inline Blocking and False-Positive-Controlled Decision Fusion}
 
-\author{Priscilla~Jospin~G and Rahul~R\thanks{P.~Jospin~G and R.~R are with the Division of Data Science and Cyber Security, Karunya Institute of Technology and Sciences, Coimbatore, India (e-mail: priscillajosin@karunya.edu.in; rahul@karunya.edu).}}
+\author[kits]{Priscilla Jospin G\corref{cor1}}
+\ead{priscillajospin@gmail.com}
+\author[kits]{Rahul R}
+\ead{rahulrajanrc@gmail.com}
+\author[kits]{Aashmi J}
+\ead{justinaashmi75@gmail.com}
+\cortext[cor1]{Corresponding author.}
+\address[kits]{Division of Data Science and Cyber Security, School of Computer Science and Technology, Karunya Institute of Technology and Sciences, Karunya Nagar, Coimbatore, Tamil Nadu 641114, India}
 
-\markboth{Manuscript}%
-{Jospin G \MakeLowercase{\textit{and}} Rahul R: Deployable Hybrid Rule--Transformer WAF}
-
-\maketitle
-
-%-----------------------------------------------------------------------
 \begin{abstract}
 \bfseries
 Signature-based web application firewalls (WAFs) are easy to evade with
-obfuscated payloads, and they need constant tuning. Transformer classifiers
-score very highly on benchmark data, yet they are rarely put in the
-blocking path, and few papers measure what they cost in latency and false
-positives. In this work a fine-tuned BERT model runs inline through the
-Nginx \texttt{auth\_request} mechanism, with the protected application left
-unchanged, and a four-tier decision policy combines it with signatures and
-anomaly rules. On CSIC~2010 the model by itself gives an F1 of 0.949, a
-false-positive rate (FPR) of 0.064 and a ROC--AUC of 0.974. A TF--IDF
-support-vector baseline is close (F1 0.965); the rule engine is far behind
-(F1 0.567). One request takes a median of 12.7~ms of GPU inference
+obfuscated payloads and need constant tuning. Transformer classifiers score
+very highly on benchmark data, yet are rarely put in the blocking path, and
+few papers measure their latency and false-positive cost. Here a fine-tuned
+BERT model runs inline through the Nginx \texttt{auth\_request} mechanism,
+leaving the application unchanged, and a four-tier decision policy combines
+it with signatures and anomaly rules. On CSIC~2010 the model alone gives an
+F1 of 0.949, a false-positive rate (FPR) of 0.064 and a ROC--AUC of 0.974. A
+TF--IDF support-vector baseline is close (F1 0.965); the rule engine is far
+behind (F1 0.567). One request takes a median of 12.7~ms of GPU inference
 (p99=18.2~ms). Under six families of semantics-preserving mutation, 0.12\%
 of blocked payloads evade the model and none evade the hybrid, a margin too
 small to justify the hybrid's higher FPR (0.228). The CSIC-trained detector
@@ -77,19 +80,18 @@ alone flags almost all traffic (FPR 1.00), whereas the hybrid reaches F1
 this: the model flags 99.9\% of requests and the hybrid 15.1\%. That corpus
 has no benign traffic, so the model's figure cannot separate detection from
 blanket flagging, while the hybrid's figure bounds what its rules cover.
-The rule layer thus helps on one corpus and harms on the other. An
-ablation, a threshold sweep, per-class results and an analysis of both
-transfer results back these findings.
+The rule layer thus helps on one corpus and harms on the other. Ablation,
+threshold and per-class analyses support these findings.
 \end{abstract}
 
-\begin{IEEEkeywords}
-Web application firewall, transformer, BERT, intrusion detection, inline
-enforcement, decision fusion, false-positive control, adversarial robustness.
-\end{IEEEkeywords}
+\begin{keyword}
+Web application firewall \sep Transformer \sep BERT \sep Intrusion detection \sep Decision fusion \sep False positives \sep Adversarial robustness
+\end{keyword}
 
+\end{frontmatter}
 
 \section{Introduction}
-\IEEEPARstart{I}{njection} flaws such as SQL injection, cross-site
+Injection flaws such as SQL injection, cross-site
 scripting, path traversal and command injection have stayed on the OWASP
 Top Ten for well over a decade, and any site open to the internet meets
 them every day. The usual answer is a web application firewall (WAF), a
@@ -328,6 +330,7 @@ evasion test uses fixed mutations, and transfer runs in one direction.
 \footnotesize
 \caption{Comparison with representative prior work (\checkmark: evaluated; part.: partly; ---: not reported).}
 \label{tab:related}
+\begin{adjustbox}{max width=\textwidth}
 \begin{tabular}{@{}lccccc@{}}
 \toprule
 Work & Model type & Inline deployment & Latency reported & FP control & Cross-dataset \\
@@ -342,6 +345,7 @@ WAF-A-MoLE~\cite{demetrio2020wafamole} & Evasion   & ---        & ---     & --- 
 This work                           & Hybrid rule+transformer & \checkmark & part. (model only) & measured & part. (one direction) \\
 \bottomrule
 \end{tabular}
+\end{adjustbox}
 \end{table*}
 
 %=======================================================================
@@ -738,6 +742,7 @@ container has to be restarted.
 
 \begin{figure*}[t]
 \centering
+\begin{adjustbox}{max width=\textwidth}
 \begin{tikzpicture}[
   node distance=3mm,
   >=Stealth,
@@ -802,6 +807,7 @@ container has to be restarted.
     node[lbl,pos=0.25,above,text=red!45!black,align=center]{fail-open: error$\Rightarrow$200}
     ([xshift=-4mm]nginx.south);
 \end{tikzpicture}
+\end{adjustbox}
 \caption{Inline enforcement architecture with the fail-open path (dashed).}
 \label{fig:arch}
 \end{figure*}
@@ -1655,6 +1661,7 @@ although each of these is limited in scope (Section~\ref{sec:threats}).
 \caption{Summary of surveyed work (results as reported by the authors).}
 \label{tab:survey}
 \footnotesize
+\begin{adjustbox}{max width=\textwidth}
 \begin{tabular}{@{}p{3.4cm}p{0.8cm}p{3.4cm}p{4.6cm}p{3.0cm}@{}}
 \toprule
 Work & Year & Approach & Data; reported result & Gap for WAF use \\
@@ -1683,6 +1690,7 @@ Demetrio et al.~\cite{demetrio2020wafamole} & 2020 & Adversarial mutation & ML-b
 This work & -- & Rules + BERT, inline & CSIC 2010; F1 0.949, FPR 0.064 & -- \\
 \bottomrule
 \end{tabular}
+\end{adjustbox}
 \end{table*}
 
 \subsection{Why keep the rule layer at all?}
@@ -2009,7 +2017,25 @@ fusion, the robustness of the model alone and the two opposite transfer
 outcomes would all have stayed hidden.
 
 %=======================================================================
-\bibliographystyle{IEEEtran}
+\section*{Acknowledgements}
+The authors thank the Division of Data Science and Cyber Security, Karunya Institute of Technology and Sciences, for providing the computing environment used in this work.
+
+\section*{Declaration of generative AI and AI-assisted technologies in the manuscript preparation process}
+During the preparation of this work the authors used Claude (Anthropic) to improve the language and readability of the text and to help reformat the manuscript. After using this tool, the authors reviewed and edited the content as needed and take full responsibility for the content of the published article.
+
+\section*{Data availability}
+The CSIC~2010, SR-BH~2020 and 2025 ModSecurity datasets used in this study are public and are cited in the manuscript. The source code, rule lists and evaluation scripts are available at \url{https://github.com/PriscillajospinG/transformer-waf-paper}.
+
+\section*{Funding}
+This research did not receive any specific grant from funding agencies in the public, commercial, or not-for-profit sectors.
+
+\section*{CRediT authorship contribution statement}
+\textbf{Priscilla Jospin G:} Conceptualization, Methodology, Software, Investigation, Formal analysis, Validation, Visualization, Writing -- original draft. \textbf{Rahul R:} Supervision, Writing -- review \& editing. \textbf{Aashmi J:} Data curation, Visualization.
+
+\section*{Declaration of competing interest}
+The authors declare that they have no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper.
+
+\bibliographystyle{elsarticle-num}
 \bibliography{references}
 
 \end{document}
